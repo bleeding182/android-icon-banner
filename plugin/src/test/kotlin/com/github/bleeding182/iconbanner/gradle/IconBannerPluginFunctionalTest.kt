@@ -1,8 +1,14 @@
 package com.github.bleeding182.iconbanner.gradle
 
+import com.github.bleeding182.iconbanner.api.BannerRequest
+import com.github.bleeding182.iconbanner.api.BannerStyle
+import com.github.bleeding182.iconbanner.api.GenerationResult
+import com.github.bleeding182.iconbanner.api.ResourceRef
+import com.github.bleeding182.iconbanner.generator.DefaultBannerGenerator
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -30,9 +36,39 @@ class IconBannerPluginFunctionalTest {
         |    }
     """.trimMargin()
 
-    /** The stub generator records the resolved text in a comment; the real one draws outlines. */
-    private fun bannerTextIn(file: File): String? =
-        Regex("<!-- iconBanner text: (.*) -->").find(file.readText())?.groupValues?.get(1)
+    /**
+     * Asserts which text actually reached the icon.
+     *
+     * The banner text ends up as glyph outlines, so it cannot be read back out of the generated
+     * XML. Instead the same text is rendered through the same generator with the same defaults and
+     * the whole file compared — which also happens to prove that the Gradle layer passes the
+     * default style through unaltered. Precedence itself is covered far more cheaply in
+     * [BannerMergeTest]; what these builds add is that the merged value survives the trip.
+     */
+    private fun assertBannerText(expected: String, generated: File) {
+        assertEquals(renderForeground(expected), generated.readText())
+    }
+
+    private fun renderForeground(text: String): String {
+        val result = DefaultBannerGenerator().generate(
+            BannerRequest(
+                style = BannerStyle(
+                    text = text,
+                    color = BannerDefaults.COLOR,
+                    textColor = BannerDefaults.TEXT_COLOR,
+                    corner = BannerDefaults.CORNER,
+                    heightPercent = BannerDefaults.HEIGHT.toDouble(),
+                ),
+                fontFile = fixture.fontFile(),
+                icon = ResourceRef("mipmap", "ic_launcher"),
+                // The base fixture declares no round icon, so the plugin drops the conventional one.
+                roundIcon = null,
+                resources = DirectoryResourceLookup(listOf(File(fixture.dir, "src/main/res"))),
+            )
+        )
+        val success = assertInstanceOf(GenerationResult.Success::class.java, result)
+        return success.files.getValue("drawable/ic_launcher_foreground.xml")
+    }
 
     @Test
     fun `text on a flavor banners that flavor and leaves the others alone`() {
@@ -52,7 +88,7 @@ class IconBannerPluginFunctionalTest {
 
         fixture.runner(":generateDevDebugIconBanner").build()
 
-        assertEquals("DEV", bannerTextIn(fixture.generatedForeground("devDebug")))
+        assertBannerText("DEV", fixture.generatedForeground("devDebug"))
     }
 
     @Test
@@ -71,8 +107,8 @@ class IconBannerPluginFunctionalTest {
 
         fixture.runner(":generateDevDebugIconBanner", ":generateDevReleaseIconBanner").build()
 
-        assertEquals("DEBUG", bannerTextIn(fixture.generatedForeground("devDebug")))
-        assertEquals("DEV", bannerTextIn(fixture.generatedForeground("devRelease")))
+        assertBannerText("DEBUG", fixture.generatedForeground("devDebug"))
+        assertBannerText("DEV", fixture.generatedForeground("devRelease"))
     }
 
     @Test
@@ -147,7 +183,7 @@ class IconBannerPluginFunctionalTest {
 
         fixture.runner(":generateDevDebugIconBanner").build()
         assertTrue(marker.exists(), "the provider was never read at all")
-        assertEquals("SHA", bannerTextIn(fixture.generatedForeground("devDebug")))
+        assertBannerText("SHA", fixture.generatedForeground("devDebug"))
     }
 
     @Test

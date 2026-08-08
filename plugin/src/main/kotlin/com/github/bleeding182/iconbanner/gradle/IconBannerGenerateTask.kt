@@ -115,7 +115,10 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         )
 
         when (result) {
-            is GenerationResult.Failure -> throw GradleException(result.message)
+            // The generator has no idea which variant it was invoked for, and a message that says
+            // what went wrong but not where is hard to act on in a build with many variants.
+            is GenerationResult.Failure ->
+                throw GradleException("icon banner ($variant): ${result.message}")
             is GenerationResult.Success -> {
                 for ((relativePath, content) in result.files) {
                     val file = output.resolve(relativePath)

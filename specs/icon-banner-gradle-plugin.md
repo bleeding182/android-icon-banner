@@ -1,6 +1,6 @@
 # Icon Banner Gradle Plugin
 
-Status: design agreed, not yet implemented
+Status: implemented
 Plugin id: `com.github.bleeding182.iconbanner`
 
 ## Problem Statement

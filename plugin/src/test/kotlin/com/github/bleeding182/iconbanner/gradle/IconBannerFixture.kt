@@ -1,5 +1,7 @@
 package com.github.bleeding182.iconbanner.gradle
 
+import com.github.bleeding182.iconbanner.api.FontSpec
+import com.github.bleeding182.iconbanner.font.FontCache
 import org.gradle.testkit.runner.GradleRunner
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.io.File
@@ -11,6 +13,17 @@ import java.io.File
  * application module can be: one manifest, one adaptive icon, one foreground vector.
  */
 internal class IconBannerFixture(val dir: File) {
+
+    /**
+     * A private font cache, pre-loaded with the checked-in face, so builds under test never reach
+     * the network and never write into the developer's real shared cache.
+     */
+    private val fontCache: File = File(dir, ".font-cache").apply {
+        val cache = FontCache(toPath())
+        val spec = FontSpec(BannerDefaults.FONT, BannerDefaults.WEIGHT, BannerDefaults.ITALIC)
+        cache.recordResolvedUrl(spec, FIXTURE_FONT_URL)
+        testFontBytes().inputStream().use { cache.store(FIXTURE_FONT_URL, it) }
+    }
 
     /** Copies one of the checked-in source trees under `src/test/resources/testkit` into the fixture. */
     fun overlay(name: String) = apply {
@@ -80,7 +93,10 @@ internal class IconBannerFixture(val dir: File) {
     fun runner(vararg arguments: String): GradleRunner = GradleRunner.create()
         .withProjectDir(dir)
         .withTestKitDir(gradleUserHome())
-        .withArguments(*arguments)
+        .withArguments(*arguments, "-P$FONT_CACHE_PROPERTY=${fontCache.invariantPath()}")
+
+    /** The font the builds under test resolve to, for assertions that need to render text. */
+    fun fontFile(): File = testFont()
 
     /** The generated resource directory AGP wires the task's output into. */
     fun generatedResources(variant: String): File =
@@ -92,6 +108,22 @@ internal class IconBannerFixture(val dir: File) {
     companion object {
         // Must match the AGP the plugin is compiled against; there is no version catalog here.
         private const val AGP_VERSION = "9.3.1"
+
+        /**
+         * The genuine gstatic URL for the checked-in face, so the primed cache holds exactly what a
+         * real download would have produced rather than a synthetic entry.
+         */
+        private const val FIXTURE_FONT_URL =
+            "https://fonts.gstatic.com/s/robotomono/v31/" +
+                "L0xuDF4xlVMF-BfR8bXMIhJHg45mwgGEFl0_Of2PQw.ttf"
+
+        private fun testFont(): File = File(
+            requireNotNull(IconBannerFixture::class.java.getResource("/font/RobotoMono-Bold.ttf")) {
+                "Missing the checked-in test font"
+            }.toURI()
+        )
+
+        private fun testFontBytes(): ByteArray = testFont().readBytes()
         private const val COMPILE_SDK = 37
 
         /**

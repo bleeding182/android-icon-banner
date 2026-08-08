@@ -60,7 +60,7 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
 
     val suffix = variant.name.replaceFirstChar { it.uppercaseChar() }
     val projectDir = project.layout.projectDirectory.asFile
-    val fontCache = project.gradle.gradleUserHomeDir.resolve("caches/icon-banner/fonts")
+    val fontCache = fontCacheDirectory(project)
     val isOffline = project.gradle.startParameter.isOffline
     val manifests = variant.sources.manifests.all.map { files -> files.toList() }
     val staticRes = res.static.map { layers -> layers.flatten() }
@@ -102,5 +102,24 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
 }
 
 private fun java.io.File.invariantPath(): String = path.replace('\\', '/')
+
+/**
+ * Where downloaded fonts live. Shared across projects and outliving `clean`, because the design
+ * deliberately bundles no fonts at all — the cache is what keeps "always download" from hurting.
+ *
+ * [FONT_CACHE_PROPERTY] overrides the location. CI can point it at a warmed, restorable directory,
+ * and the plugin's own tests use it to stay off the network without writing into the developer's
+ * real cache.
+ */
+private fun fontCacheDirectory(project: org.gradle.api.Project): java.io.File {
+    val override = project.providers.gradleProperty(FONT_CACHE_PROPERTY).orNull
+    return if (override != null) {
+        project.layout.projectDirectory.dir(override).asFile
+    } else {
+        project.gradle.gradleUserHomeDir.resolve("caches/android-icon-banner/fonts")
+    }
+}
+
+internal const val FONT_CACHE_PROPERTY = "iconbanner.fontCacheDir"
 
 private const val TASK_GROUP = "icon banner"

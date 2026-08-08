@@ -17,7 +17,7 @@ import kotlin.test.fail
  * the suite never touches the network.
  */
 val testFont: File by lazy {
-    val url = TestResources::class.java.getResource("/generator/font/RobotoMono-Bold.ttf")
+    val url = TestResources::class.java.getResource("/font/RobotoMono-Bold.ttf")
         ?: error("Test font missing from src/test/resources/generator/font")
     File(url.toURI())
 }

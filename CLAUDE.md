@@ -10,4 +10,7 @@ and not where features go. Change it only when the demo needs to show something.
 Design decisions and their reasoning live in `specs/`. Read the relevant spec before changing
 behaviour rather than inferring intent from the code.
 
-Status: designed, not yet implemented. The plugin build does not exist yet.
+The plugin lives in `plugin/`, its own Gradle build, included from the root build's plugin
+management. Three layers, deliberately separated: `api/` holds contracts that reference neither
+Gradle nor AGP, `generator/` is pure and testable without a build, `gradle/` is the only part that
+knows AGP exists. Keep it that way — the golden tests depend on it.
