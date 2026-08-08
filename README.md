@@ -2,26 +2,54 @@
 
 A Gradle plugin that stamps a corner ribbon onto your Android launcher icon, per build variant.
 
-Install a dev build and a production build on the same device and you cannot tell them apart in the
-launcher, in recents, or in app info. This marks the ones you choose and leaves the rest byte-for-byte
-untouched.
-
 ![Production icon, dev icon as a launcher shows it, and the full adaptive foreground](docs/preview.png)
 
-*Left: production, unmodified. Middle: the dev variant as a launcher masks it. Right: the full 108dp
-adaptive foreground that was generated.*
+Install a dev build and a production build on the same device and you cannot tell them apart in the
+launcher, in recents, or in app info. Mark the variants you choose; the rest stay untouched.
 
-## Install
+```kotlin
+plugins {
+    id("com.android.application")
+    id("com.github.bleeding182.iconbanner") version "0.1.0-SNAPSHOT"
+}
 
-While the plugin is still being tested it publishes to GitHub Packages. In `settings.gradle.kts`:
+android {
+    buildTypes {
+        debug { iconBanner { text = "DEV" } }   // release stays untouched
+    }
+}
+```
+
+No imports, no icon assets to maintain. A variant is bannered only if `text` resolves for it.
+
+<img src="docs/preview-monochrome.gif" alt="A themed icon cycling through three system tints, the banner text staying a cutout" width="144" align="right">
+
+Themed (monochrome) icons work too: the band is clipped out of the icon and the text punched through
+it as a real cutout, so it stays legible under any tint the system picks.
+
+Requires AGP 9 and Gradle 9, and a vector launcher icon. Applying it to a library or
+dynamic-feature module does nothing, so a convention plugin can apply it everywhere.
+
+<br clear="right">
+
+## Setup
+
+> Not published yet — the first release is coming to GitHub Packages shortly. Until then, build it
+> locally with `./gradlew -p plugin publishToMavenLocal` and add `mavenLocal()`.
+
+GitHub Packages needs authentication even for public packages, so put `gpr.user` and `gpr.key` (a
+token with `read:packages`) in your `~/.gradle/gradle.properties`, then add the repository in
+`settings.gradle.kts`:
 
 ```kotlin
 pluginManagement {
     repositories {
         maven("https://maven.pkg.github.com/bleeding182/android-icon-banner") {
             credentials {
-                username = providers.gradleProperty("gpr.user").orNull
-                password = providers.gradleProperty("gpr.key").orNull
+                username = providers.gradleProperty("gpr.user")
+                    .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.gradleProperty("gpr.key")
+                    .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
             }
         }
         gradlePluginPortal()
@@ -31,23 +59,12 @@ pluginManagement {
 }
 ```
 
-GitHub Packages requires authentication even for public packages, so `gpr.user` and `gpr.key` (a
-personal access token with `read:packages`) need to be in your `~/.gradle/gradle.properties`.
+## Options
 
-Then, in your application module:
-
-```kotlin
-plugins {
-    id("com.android.application")
-    id("com.github.bleeding182.iconbanner")
-}
-```
-
-## Use
+Style the ribbon once at the `android` level; flavors and build types only say what it reads.
 
 ```kotlin
 android {
-    // Style once, for every variant.
     iconBanner {
         color = "#FF0000"
         textColor = "#FFFFFF"
@@ -57,156 +74,77 @@ android {
         weight = 700
     }
 
+    flavorDimensions += "environment"
     productFlavors {
-        create("dev") { iconBanner { text = "DEV" } }   // bannered
-        create("prod") { }                              // untouched
+        create("dev") { dimension = "environment"; iconBanner { text = "DEV" } }
+        create("prod") { dimension = "environment" }
     }
 }
 ```
 
-A variant gets a banner **only** if `text` was set for it. There is no `enabled` flag, so there is no
-way to forget one and ship a marked release.
+| Property | Type | Default | Notes |
+|---|---|---|---|
+| `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
+| `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` / `?attr/…` reference. |
+| `textColor` | `String` | `#FFFFFF` | Same forms. |
+| `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
+| `height` | `Int` | `20` | Width of the band, as a percentage of the icon's shorter edge. The only size knob; text auto-fits. |
+| `font` | `String` | `Roboto Mono` | Any Google Fonts family, downloaded on first use and cached. |
+| `weight` | `Int` | `700` | Must be a weight the family actually offers. |
+| `italic` | `Boolean` | `false` | |
 
-No imports are needed, in Kotlin or in Groovy. `corner` takes `topLeft`, `topRight`, `bottomLeft`
-or `bottomRight` directly; the `BannerCorner` enum is public too, if you would rather name it
-explicitly.
+`corner` takes the bare names above in both Kotlin and Groovy, with no import.
 
 ### Precedence
 
 Build type beats product flavor beats the project-level block — the same rule AGP uses for
-everything else.
+everything else. A `null` only clears the value if nothing higher up assigns one.
 
 ```kotlin
 android {
     iconBanner { text = "UNRELEASED" }               // every variant, unless overridden
     productFlavors {
         create("dev") { iconBanner { text = "DEV" } }
-        create("prod") { iconBanner { text = null } } // opts out of the inherited text
+        create("prod") { iconBanner { text = null } } // no banner — unless a build type sets one
     }
     buildTypes {
-        named("debug") { iconBanner { text = "DEBUG" } }   // wins over the flavor
+        named("debug") { iconBanner { text = "DEBUG" } }   // wins over both, prodDebug included
     }
 }
 ```
 
 ### Build metadata in the banner
 
-`text` accepts a `Provider<String>`, which is only read when the icon is actually generated:
+`text` accepts a `Provider<String>`, which is only read when the icon is generated:
 
 ```kotlin
 val gitSha = providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
     .standardOutput.asText.map { it.trim() }
 
-iconBanner { text = gitSha.map { "DEV $it" } }
+android {
+    buildTypes {
+        debug { iconBanner { text = gitSha.map { "DEV $it" } } }
+    }
+}
 ```
 
-Assigning a provider enables the banner even before its value is known. Note that under the
-configuration cache, a provider may still be resolved during configuration on builds where the
-generate task is in the task graph.
+Assigning a provider enables the banner even before its value is known.
 
-## Options
+## Limitations
 
-| Property | Type | Default | Notes |
-|---|---|---|---|
-| `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
-| `color` | `String` | `#FF0000` | Hex, or a `@color/…` / `?attr/…` reference. Alpha is supported. |
-| `textColor` | `String` | `#FFFFFF` | Same forms. |
-| `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
-| `height` | `Int` | `20` | Band width as a percentage of the icon's edge. The only size knob; text auto-fits. |
-| `font` | `String` | `Roboto Mono` | Any Google Fonts family. |
-| `weight` | `Int` | `700` | Must be a weight the family actually offers. |
-| `italic` | `Boolean` | `false` | |
+- **Vector icons only.** Legacy raster mipmaps are skipped, so a device below API 26 shows the
+  unmodified icon. If a variant asks for a banner and there is no vector icon at all, the build
+  fails rather than silently shipping an unmarked one.
+- The bannered copy overrides the foreground **by resource name**, so anything else pointing at that
+  drawable — a splash screen, say — gets the banner too.
+- The build fails if the chosen font has no glyph for a character in your text.
+- A variant with Android resources disabled gets no banner, with a warning.
 
-## How it works
+## More
 
-The plugin reads `android:icon` from your manifest, follows the adaptive icon to its foreground
-vector, and writes a bannered copy into a generated resource directory under the **same** resource
-name. AGP's resource merger orders generated resources last, so the copy wins. Your source tree is
-never modified.
-
-### Themed icons
-
-<img src="docs/preview-monochrome.gif" alt="The themed icon cycling through three system tints, the banner text staying a cutout" width="200" align="right">
-
-Themed icons are handled properly rather than ignored. A monochrome layer keeps only alpha, so an
-overlaid ribbon would render as one solid unreadable wedge — banner and text both opaque, nothing to
-tell them apart.
-
-The plugin instead clips the icon content away from the band and punches the text out of the ribbon
-as transparent holes, emitting that under a separate name and redirecting `<monochrome>` at it. The
-text is a genuine cutout, so it stays legible whatever tint the system picks.
-
-<br clear="right">
-
-
-Geometry is measured against the adaptive-icon **safe zone**, not the full 108dp canvas — a launcher
-masks the icon to a circle, and text sized to the canvas gets sheared off at the rim.
-
-## Fonts
-
-Faces are downloaded from Google Fonts on demand and cached in
-`~/.gradle/caches/android-icon-banner/fonts`, shared across projects and surviving `clean`. An
-incremental build makes no network requests. `--offline` uses the cache or fails naming the URL it
-needed.
-
-Set `iconbanner.fontCacheDir` to relocate the cache, which is useful for a warmed, restorable cache
-on CI.
-
-The rendered glyph outlines are embedded in your app. Google Fonts are typically OFL-licensed, so
-check the licence of any family you ship.
-
-## Requirements and limitations
-
-- **AGP 9+ and Gradle 9+.** No support for the AGP 8 line.
-- **Application modules only.** Inert in library and dynamic-feature modules, so applying it from a
-  convention plugin across every module is safe.
-- **Vector icons only.** Legacy raster mipmaps (`mipmap-*/ic_launcher.webp`) are skipped, so devices
-  below API 26 show the unmodified icon. If a variant asks for a banner and there is no vector at
-  all, the build fails rather than silently shipping an unmarked icon.
-- Overriding the foreground by name affects **every** use of that drawable, not just the launcher
-  icon — a splash screen pointing at the same resource also gets the banner.
-
-## Development
-
-```bash
-./gradlew -p plugin build          # plugin and its tests
-./gradlew :app:assembleDevDebug    # demo app, bannered
-./gradlew :app:assembleProdDebug   # demo app, untouched
-```
-
-`:app` exists only as a demo and manual visual check. The design and the reasoning behind it are in
-[`specs/`](specs/icon-banner-gradle-plugin.md).
-
-To publish a build for testing:
-
-```bash
-./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
-./gradlew -p plugin publishToMavenLocal      # or just locally
-```
-
-### Previews
-
-The images above are generated from the demo app, so they follow whatever `app/build.gradle.kts`
-configures — change the corner, text or font and rerun:
-
-```bash
-./scripts/preview.sh              # docs/preview.png
-./scripts/preview-monochrome.sh   # docs/preview-monochrome.gif
-```
-
-Both need `python3`, `inkscape` and `imagemagick`. `scripts/vd2svg.py` will also preview any single
-drawable:
-
-```bash
-python3 scripts/vd2svg.py out.svg mono.xml --mask --tint '#D32F2F' --background '#F6DEDE'
-```
-
-It is a previewer rather than a real VectorDrawable renderer, and
-[`scripts/CLAUDE.md`](scripts/CLAUDE.md) lists what it does not cover. The output is reconstructed
-from the generated XML, not captured from a device — for anything load-bearing, install the app and
-look at it.
-
-## Credits
+- [How it works](docs/how-it-works.md) — the resource override, geometry, themed icons, font caching.
+- [Contributing](CONTRIBUTING.md) — building, the demo app, regenerating these previews.
+- [Design notes](specs/icon-banner-gradle-plugin.md) — decisions and the reasoning behind them.
 
 Modelled on a [browser-based banner generator](https://bleeding182.github.io/tools/banner_generator.html)
 that produced the same ribbon as copy-pasteable XML.
