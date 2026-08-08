@@ -29,8 +29,12 @@ produces a bannered copy for exactly those variants, and leaves every other vari
 untouched. Nothing in my source tree changes; my checked-in icon stays the clean production one.
 
 Because the banner is generated at build time from real configuration, `text` can be a lazily
-evaluated provider, so a git SHA or a CI build number can appear on the icon without running
-anything during configuration.
+evaluated provider, so a git SHA or a CI build number can appear on the icon.
+
+The laziness guarantee is narrower than it first looks, and the implementation confirmed it: a
+provider is definitely not read on a build that does not request the icon. On a build that does,
+the configuration cache finalizes task input providers when it stores its entry, so the provider may
+still be resolved during configuration. That is the guarantee the plugin can actually make.
 
 Themed (monochrome) icons are handled properly rather than ignored: monochrome only keeps alpha, so
 a colored ribbon layered on top would render as a solid untextured wedge with unreadable text. The

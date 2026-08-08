@@ -32,6 +32,24 @@ gradlePlugin {
     }
 }
 
+publishing {
+    repositories {
+        // Testing ground until the plugin settles; the Gradle Plugin Portal is the eventual home
+        // and `plugin-publish` above already targets it. GitHub Packages needs a token even for
+        // public packages, so consumers have to supply credentials too.
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/bleeding182/android-icon-banner")
+            credentials {
+                username = providers.gradleProperty("gpr.user")
+                    .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+                password = providers.gradleProperty("gpr.key")
+                    .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+            }
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }

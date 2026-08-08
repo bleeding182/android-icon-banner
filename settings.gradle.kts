@@ -23,6 +23,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Android(Icon Banner"
+rootProject.name = "android-icon-banner"
 include(":app")
  

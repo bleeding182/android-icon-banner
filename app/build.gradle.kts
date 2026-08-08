@@ -26,10 +26,10 @@ android {
     iconBanner {
         color = "#FF0000"
         textColor = "#FFFFFF"
-        corner = BannerCorner.TOP_LEFT
-        height = 20
-        font = "Roboto Mono"
-        weight = 700
+        corner = BannerCorner.BOTTOM_RIGHT
+        height = 32
+        font = "Black Ops One"
+        weight = 400
     }
 
     flavorDimensions += "environment"
@@ -38,7 +38,7 @@ android {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             iconBanner {
-                text = "DEV"
+                text = "2026"
             }
         }
         create("prod") {
