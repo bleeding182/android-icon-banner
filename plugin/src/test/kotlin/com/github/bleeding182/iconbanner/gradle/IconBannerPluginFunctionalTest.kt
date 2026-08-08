@@ -92,6 +92,29 @@ class IconBannerPluginFunctionalTest {
     }
 
     @Test
+    fun `a flavor scoped block needs no import and does not leak to other flavors`() {
+        // Kotlin generates a type-safe accessor for the project-level block but none for container
+        // elements. With no candidate on the inner receiver, this same script still compiles and
+        // binds to the enclosing android { } receiver, configuring the project-wide defaults — so
+        // every variant gets a banner and nothing warns you. The accessors live in
+        // org.gradle.kotlin.dsl, which build scripts star-import, precisely to prevent that.
+        fixture.buildScript(
+            """
+            |$flavors
+            |    productFlavors {
+            |        named("dev") { iconBanner { text = "DEV"; corner = bottomRight } }
+            |    }
+            """.trimMargin()
+        )
+
+        val tasks = fixture.runner("tasks", "--group=icon banner").build()
+
+        assertTrue(tasks.output.contains("generateDevDebugIconBanner"), tasks.output)
+        assertFalse(tasks.output.contains("generateProdDebugIconBanner"), tasks.output)
+        assertFalse(tasks.output.contains("generateProdReleaseIconBanner"), tasks.output)
+    }
+
+    @Test
     fun `build type text overrides flavor text`() {
         fixture.buildScript(
             """

@@ -1,6 +1,3 @@
-import com.github.bleeding182.iconbanner.api.BannerCorner
-import com.github.bleeding182.iconbanner.gradle.iconBanner
-
 plugins {
     alias(libs.plugins.android.application)
     id("com.github.bleeding182.iconbanner")
@@ -26,7 +23,7 @@ android {
     iconBanner {
         color = "#FF0000"
         textColor = "#FFFFFF"
-        corner = BannerCorner.BOTTOM_RIGHT
+        corner = bottomRight
         height = 32
         font = "Black Ops One"
         weight = 400

@@ -46,15 +46,12 @@ plugins {
 ## Use
 
 ```kotlin
-import com.github.bleeding182.iconbanner.api.BannerCorner
-import com.github.bleeding182.iconbanner.gradle.iconBanner   // required — see below
-
 android {
     // Style once, for every variant.
     iconBanner {
         color = "#FF0000"
         textColor = "#FFFFFF"
-        corner = BannerCorner.TOP_LEFT
+        corner = topLeft
         height = 20
         font = "Roboto Mono"
         weight = 700
@@ -70,16 +67,9 @@ android {
 A variant gets a banner **only** if `text` was set for it. There is no `enabled` flag, so there is no
 way to forget one and ship a marked release.
 
-### That import is load-bearing
-
-> [!IMPORTANT]
-> In Kotlin build scripts you must `import com.github.bleeding182.iconbanner.gradle.iconBanner`.
-
-Gradle generates a type-safe accessor for the `android { iconBanner { } }` block but not for build
-types or product flavors. Without the import, an `iconBanner { }` written inside a flavor still
-*compiles* — it binds to the enclosing `android` receiver and silently configures the project-wide
-defaults instead, giving every variant a banner. The import shadows the generated accessor and makes
-both forms resolve correctly. Groovy scripts need nothing.
+No imports are needed, in Kotlin or in Groovy. `corner` takes `topLeft`, `topRight`, `bottomLeft`
+or `bottomRight` directly; the `BannerCorner` enum is public too, if you would rather name it
+explicitly.
 
 ### Precedence
 
@@ -121,7 +111,7 @@ generate task is in the task graph.
 | `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
 | `color` | `String` | `#FF0000` | Hex, or a `@color/…` / `?attr/…` reference. Alpha is supported. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
-| `corner` | `BannerCorner` | `TOP_LEFT` | `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`. |
+| `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
 | `height` | `Int` | `20` | Band width as a percentage of the icon's edge. The only size knob; text auto-fits. |
 | `font` | `String` | `Roboto Mono` | Any Google Fonts family. |
 | `weight` | `Int` | `700` | Must be a weight the family actually offers. |

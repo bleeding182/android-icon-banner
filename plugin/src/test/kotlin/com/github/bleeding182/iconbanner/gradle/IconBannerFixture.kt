@@ -68,9 +68,9 @@ internal class IconBannerFixture(val dir: File) {
         File(dir, "local.properties").writeText("sdk.dir=${androidSdk().invariantPath()}\n")
         File(dir, "build.gradle.kts").writeText(
             """
-            import com.github.bleeding182.iconbanner.api.BannerCorner
-            import com.github.bleeding182.iconbanner.gradle.iconBanner
-
+            // Deliberately no imports. Build scripts must not need any, and a flavor-scoped
+            // iconBanner block that quietly binds to the outer android { } receiver instead is a
+            // silent, whole-project failure — see `IconBannerPluginFunctionalTest`.
             plugins {
                 id("com.android.application")
                 id("com.github.bleeding182.iconbanner")

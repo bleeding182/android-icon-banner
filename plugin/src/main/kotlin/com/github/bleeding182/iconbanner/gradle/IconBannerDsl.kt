@@ -83,6 +83,16 @@ abstract class IconBannerDsl @Inject constructor(objects: ObjectFactory) {
 
     /** Whether to request the italic face. */
     abstract val italic: Property<Boolean>
+
+    /**
+     * The four corners, as members, so `corner = topLeft` needs no import in a build script.
+     *
+     * [BannerCorner] is public and works just as well if you would rather name it explicitly.
+     */
+    val topLeft: BannerCorner get() = BannerCorner.TOP_LEFT
+    val topRight: BannerCorner get() = BannerCorner.TOP_RIGHT
+    val bottomLeft: BannerCorner get() = BannerCorner.BOTTOM_LEFT
+    val bottomRight: BannerCorner get() = BannerCorner.BOTTOM_RIGHT
 }
 
 /** Assignment state of [IconBannerDsl.text]. */
