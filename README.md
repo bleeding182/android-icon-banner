@@ -124,10 +124,20 @@ vector, and writes a bannered copy into a generated resource directory under the
 name. AGP's resource merger orders generated resources last, so the copy wins. Your source tree is
 never modified.
 
+### Themed icons
+
+<img src="docs/preview-monochrome.gif" alt="The themed icon cycling through three system tints, the banner text staying a cutout" width="200" align="right">
+
 Themed icons are handled properly rather than ignored. A monochrome layer keeps only alpha, so an
-overlaid ribbon would render as one solid unreadable wedge. The plugin instead clips the icon content
-away from the band and punches the text out of the ribbon as transparent holes, emitting that under a
-separate name and redirecting `<monochrome>` at it.
+overlaid ribbon would render as one solid unreadable wedge — banner and text both opaque, nothing to
+tell them apart.
+
+The plugin instead clips the icon content away from the band and punches the text out of the ribbon
+as transparent holes, emitting that under a separate name and redirecting `<monochrome>` at it. The
+text is a genuine cutout, so it stays legible whatever tint the system picks.
+
+<br clear="right">
+
 
 Geometry is measured against the adaptive-icon **safe zone**, not the full 108dp canvas — a launcher
 masks the icon to a circle, and text sized to the canvas gets sheared off at the rim.
