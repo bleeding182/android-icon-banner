@@ -1,5 +1,9 @@
+import com.github.bleeding182.iconbanner.api.BannerCorner
+import com.github.bleeding182.iconbanner.gradle.iconBanner
+
 plugins {
     alias(libs.plugins.android.application)
+    id("com.github.bleeding182.iconbanner")
 }
 
 android {
@@ -16,6 +20,31 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Style once, here. Flavors only say what the ribbon reads.
+    iconBanner {
+        color = "#FF0000"
+        textColor = "#FFFFFF"
+        corner = BannerCorner.TOP_LEFT
+        height = 20
+        font = "Roboto Mono"
+        weight = 700
+    }
+
+    flavorDimensions += "environment"
+    productFlavors {
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            iconBanner {
+                text = "DEV"
+            }
+        }
+        create("prod") {
+            dimension = "environment"
+            // No banner: the production icon is byte-for-byte the checked-in one.
+        }
     }
 
     buildTypes {
