@@ -87,11 +87,14 @@ abstract class IconBannerDsl @Inject constructor(objects: ObjectFactory) {
     abstract val maxTextSize: Property<Int>
 
     /**
-     * Band width as a multiple of the text's cap height.
+     * Band thickness — measured across the band, the way it is seen — as a multiple of the text's cap
+     * height.
      *
      * The only way to change the band's thickness, and it changes nothing about the text: at 1 the
      * band is exactly the height of the glyphs, and the surplus above that becomes clearance above
-     * and below them.
+     * and below them. It plays no part in fitting the text and does not narrow the range
+     * [maxTextSize] may take, so the two knobs can be set in either order without one invalidating
+     * the other.
      */
     abstract val lineHeight: Property<Double>
 

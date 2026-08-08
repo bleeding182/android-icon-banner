@@ -93,7 +93,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
 
         val maxTextSizeValue = maxTextSize.get()
         val lineHeightValue = lineHeight.get()
-        BannerTextSize.check(maxTextSizeValue, lineHeightValue, variant)
+        BannerGeometryBounds.check(maxTextSizeValue, lineHeightValue, variant)
 
         val style = BannerStyle(
             text = text.get(),

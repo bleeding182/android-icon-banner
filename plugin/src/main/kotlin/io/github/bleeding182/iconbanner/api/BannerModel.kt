@@ -39,7 +39,10 @@ internal data class BannerStyle(
      * text too long for the ribbon is drawn smaller.
      */
     val maxTextSizePercent: Double,
-    /** Ribbon band width as a multiple of the text's cap height, so the band hugs the text. */
+    /**
+     * Ribbon band thickness, measured across the band, as a multiple of the text's cap height, so the
+     * band hugs the text. Purely cosmetic: it never enters the fit, so it cannot move the text.
+     */
     val lineHeight: Double,
 )
 

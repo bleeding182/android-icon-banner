@@ -123,7 +123,7 @@ abstract class BannerGeneratorTestCases {
         assertMatchesGolden("text_short.xml", output)
         // Two characters have length to spare, so the text is exactly as large as it was allowed to
         // be and the band is exactly that times the line height.
-        assertEquals(13.0 / 100.0 * 108.0 * 1.5, bandWidthOf(output), 0.01)
+        assertEquals(13.0 / 100.0 * 108.0 * 1.5, bandThicknessOf(output), 0.01)
     }
 
     @Test
@@ -133,19 +133,27 @@ abstract class BannerGeneratorTestCases {
         // The point of deriving the band from the text: eleven characters do not fit at the size
         // asked for, so both the text and the band around it come out smaller.
         val full = 13.0 / 100.0 * 108.0 * 1.5
-        assertTrue(bandWidthOf(output) < full, "the band should have narrowed from $full")
+        assertTrue(bandThicknessOf(output) < full, "the band should have narrowed from $full")
     }
 
     @Test
     fun `lineHeight thickens the band without touching the text`() {
         // The two knobs are meant to be independent: maxTextSize sizes the text, lineHeight only
-        // decides how much band is wrapped around it. "DEV" reaches maxTextSize either way, so the
-        // glyph path has to come out byte-identical.
+        // decides how much band is wrapped around it. Checked for both cases that exist — "DEV"
+        // reaches maxTextSize, "STAGING RC1" is cut down by the length budget — because a coupling
+        // between thickness and fit would show up in the second one. Byte equality, not a tolerance:
+        // the glyph outline must not differ at all.
+        listOf("DEV", "STAGING RC1").forEach { text ->
+            val tight = plainVector(style(text = text, lineHeight = 1.0))
+            val loose = plainVector(style(text = text, lineHeight = 2.0))
+            assertEquals(glyphPathOf(tight), glyphPathOf(loose), "\"$text\" moved with the line height")
+            // Tolerance is two decimals of pathData rounding on each edge, doubled by the ratio.
+            assertEquals(2 * bandThicknessOf(tight), bandThicknessOf(loose), 0.02, "\"$text\"")
+        }
         val tight = plainVector(style(lineHeight = 1.0))
         val loose = plainVector(style(lineHeight = 2.0))
-        assertEquals(glyphPathOf(tight), glyphPathOf(loose))
-        assertEquals(13.0 / 100.0 * 108.0, bandWidthOf(tight), 0.01)
-        assertEquals(2 * 13.0 / 100.0 * 108.0, bandWidthOf(loose), 0.01)
+        assertEquals(13.0 / 100.0 * 108.0, bandThicknessOf(tight), 0.01)
+        assertEquals(2 * 13.0 / 100.0 * 108.0, bandThicknessOf(loose), 0.01)
     }
 
     @Test
@@ -427,8 +435,10 @@ abstract class BannerGeneratorTestCases {
             ?: error("No glyph path in $output")
 
     /**
-     * How far across the corner diagonal a point sits — the axis the band's width is measured along,
-     * so the band is a plain interval in it.
+     * How far across the corner diagonal a point sits, measured along the two axes rather than as a
+     * true distance. Monotonic in the real distance, so the band is still a plain interval in it and
+     * "is this point between the band's edges" is exact; only ratios need the √2 (see
+     * [bandThicknessOf]).
      */
     private fun across(corner: BannerCorner, x: Double, y: Double): Double = when (corner) {
         BannerCorner.TOP_LEFT -> x + y
@@ -437,10 +447,16 @@ abstract class BannerGeneratorTestCases {
         BannerCorner.BOTTOM_RIGHT -> (108.0 - x) + (108.0 - y)
     }
 
-    /** The width of the band actually drawn, read back off the quad. */
-    private fun bandWidthOf(output: String, corner: BannerCorner = BannerCorner.TOP_LEFT): Double {
+    /**
+     * The thickness of the band actually drawn, read back off the quad.
+     *
+     * [across] measures along the axes, and the band runs at 45°, so its two edges are √2 further
+     * apart in that metric than the band is thick. `lineHeight` names the thickness, so the
+     * conversion belongs here rather than in the expectations.
+     */
+    private fun bandThicknessOf(output: String, corner: BannerCorner = BannerCorner.TOP_LEFT): Double {
         val edges = quadPointsOf(output).map { (x, y) -> across(corner, x, y) }
-        return edges.max() - edges.min()
+        return (edges.max() - edges.min()) / Math.sqrt(2.0)
     }
 
     /** Banners `foreground.xml` as a plain `<vector>` launcher icon and returns the one output. */

@@ -11,12 +11,21 @@ internal object BannerDefaults {
     val CORNER = BannerCorner.TOP_LEFT
 
     /**
-     * Cap height as a percentage of the icon's shorter edge, and the band as a multiple of it.
+     * Cap height as a percentage of the icon's shorter edge, and the band's thickness as a multiple
+     * of it.
      *
-     * Chosen for continuity with the single band-width knob these replaced: its default of 20
-     * produced a 21.6-unit band on a 108 icon with 13.8 units of that available to the text, a ratio
-     * of 1.56. 13 and 1.5 put a 14.04-unit cap height in a 21.06-unit band, so short text and the
-     * band around it both come out within about 2% of where they used to be.
+     * 13 stays where it was: short text comes out 14.04 units of 108 — 9.4dp on a launcher — and
+     * anything longer than about three characters is cut down by the length budget regardless, so the
+     * value only decides how `QA` and `DEV` look.
+     *
+     * 1.5 is *not* continuity with the band-width knob these replaced, which is how it was first
+     * arrived at. That reasoning was measuring the band along the axes, so a "line height" of 1.5
+     * drew 1.06 cap heights of band and left the glyphs touching both edges. Read honestly it leaves
+     * a quarter of the cap height clear above and below the text, which is where the ribbon stops
+     * looking crowded; and at 13 the band's corner-side edge still lands inside the 66dp safe zone
+     * (`0.295 * s` against `0.306 * s`), so even a short marker's band is drawn in full under every
+     * launcher mask. Looser than this starts losing the corner of the band to the mask and pushing
+     * the inner edge across the middle of the artwork.
      */
     const val MAX_TEXT_SIZE = 13
     const val LINE_HEIGHT = 1.5

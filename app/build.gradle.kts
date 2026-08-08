@@ -28,7 +28,9 @@ android {
         // maxTextSize — is what sets the text size: about 6.5 units of 108, or 4.3dp on a launcher,
         // just clear of the legibility warning. The line height is non-default on purpose, so the
         // visual check would notice the setting being dropped on the way to the generator: looser
-        // than the default 1.5 gives the band 11.7 units around that text, which reads better here.
+        // than the default 1.5 wraps 11.7 units of band around that text, which reads better at this
+        // size. It was 2.2 while the band was drawn 1/√2 too thin and 2.2 was what it took to get
+        // roughly this thickness; the number means what it says now.
         maxTextSize = 13
         lineHeight = 1.8
         font = "Black Ops One"

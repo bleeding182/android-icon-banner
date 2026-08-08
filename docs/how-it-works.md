@@ -45,9 +45,25 @@ against the full 108dp canvas gets sheared off at the rim. Two constants keep it
 Everything else follows from the text. `maxTextSize` is the cap height the text would like to be,
 as a percentage of the icon's shorter viewport edge; the text is drawn at that size, or smaller if
 the length budget cannot take it. The band is then `lineHeight` times whatever the text ended up
-as, so it hugs the text instead of the text rattling around inside it, and the clearance above and
-below the glyphs is simply what `lineHeight` left over. There is no font-size knob and no separate
-padding knob.
+as — measured across the band, which is the same direction a cap height is measured in — so it hugs
+the text instead of the text rattling around inside it, and the clearance above and below the glyphs
+is simply what `lineHeight` left over. There is no font-size knob and no separate padding knob.
+
+`lineHeight` is cosmetic and nothing else. It plays no part in the fit, and it does not restrict
+`maxTextSize`. Because the centre line is pinned, extra thickness grows symmetrically: the
+corner-side edge moves towards the corner, where a mask may simply decline to draw it, and the inner
+edge moves towards the middle of the icon, which is a matter of taste. Neither costs the text
+anything. Only the *text* has to survive the mask, and that — half a cap height either side of a
+fixed line, against the safe zone's rim — is what caps `maxTextSize` at 21.
+
+**Two kinds of length, and they differ by √2.** The ribbon runs at 45°, so the quad's coordinates are
+intercepts on the x and y axes, while thicknesses and clearances are true distances measured across
+the band. Moving a 45° edge by `t` perpendicular moves its axis intercept by `t * √2`. The two were
+confused once, in the direction that is hard to see: `lineHeight` was written straight into the axis
+offsets, so every band was drawn `1/√2` — 71% — of the thickness asked for. At the default that left
+the glyphs 3% of their own height clear at each edge instead of 25%, which reads as text touching the
+ribbon's edges. Lengths in the code that are axis-measured now say so in their names, and there is
+exactly one place that converts between the two.
 
 The band's position is deliberately *not* derived from its width. It used to be — the band was
 anchored on its corner-side edge and grew inwards — and that quietly made the band width buy ribbon

@@ -64,8 +64,8 @@ android {
 | `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` reference. Not `?attr/…` — a launcher inflates the icon without a theme. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
 | `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
-| `maxTextSize` | `Int` | `13` | Largest the text may be: its cap height as a percentage of the icon's shorter edge. An upper bound — text too long to fit across the ribbon is drawn smaller. `1..20` at the default `lineHeight`. |
-| `lineHeight` | `Double` | `1.5` | Band width as a multiple of the text's cap height. The band is sized from the text, so this is what makes the ribbon chunkier or tighter; it never changes the text. `1.0..3.0`. |
+| `maxTextSize` | `Int` | `13` | Largest the text may be: its cap height as a percentage of the icon's shorter edge. An upper bound — text too long to fit across the ribbon is drawn smaller. `1..21`, past which a launcher's mask would cut into the glyphs. |
+| `lineHeight` | `Double` | `1.5` | Band thickness as a multiple of the text's cap height, measured across the band. The band is sized from the text, so this is what makes the ribbon chunkier or tighter; it never changes the text's size or position. `1.0..3.0`. |
 | `font` | `String` | `Roboto Mono` | Any Google Fonts family, downloaded on first use and cached. |
 | `weight` | `Int` | `700` | Must be a weight the family actually offers. |
 | `italic` | `Boolean` | `false` | |

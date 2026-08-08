@@ -370,6 +370,68 @@ for is fixed geometry — so the legibility warning stops suggesting one and say
 instead. `SAFE_ZONE_FRACTION` and the safe-zone chord are untouched; they were the fix for real
 on-device clipping and the geometry still keeps the text inside the safe zone.
 
+#### Superseded again: the band was √2 too thin
+
+`lineHeight` was documented and computed as a thickness measured *across* the ribbon, and then written
+straight into the quad's offsets *along each axis*. For a top-left band the long edges lie on
+`x + y = b` and `x + y = b - w`, whose perpendicular separation is `w / √2`, so every band was drawn
+at 71% of the thickness asked for and `lineHeight` behaved as `lineHeight / √2`. At the default 1.5
+the real thickness was 1.06 cap heights: about 3% of the glyph height clear at each long edge, which
+reads as text touching the ribbon, and which is the complaint that found it. The "9.78-unit band
+around a 6.52 cap height" recorded above is the same mistake in this document — that was the axis
+measurement of a band 6.92 thick.
+
+Measured on the sample app before the fix, from the generated `pathData` projected onto the band's
+normal: a 10.14 band around a 6.52 cap height, the glyphs filling 64% of it with 1.81 clear on each
+side. Afterwards the band is exactly `capHeight * lineHeight`, whatever `lineHeight` is set to.
+
+The fix is naming, not a correction factor sprinkled at the call site. Axis-measured lengths carry an
+`Axis` suffix — `centreLineAxis`, `innerEdgeAxis`, `cornerSideEdgeAxis`, `bandWidthAxis` — everything
+else is a true distance, and `Ribbon.perpendicularFromIconCentre` is the only place the two meet. The
+ambiguity *was* the bug: the old `bandWidth` was right as an axis offset and wrong as the thickness
+its own documentation claimed, and neither a golden file nor a coordinate assertion could tell those
+apart. The tests now project the quad onto the band's normal and assert the separation of the two long
+edges, in all four corners and on a non-square viewport, which is the one measurement the old suite
+never took.
+
+Nothing about the text moved, and that is checkable rather than hoped for: the fitted size never
+depended on the band, and the pivot is the centre of the quad, which sits on the pinned centre line at
+any thickness. Every golden file's diff is therefore the ribbon quad alone — the band widening
+symmetrically about an unchanged centre line — with the glyph outlines byte-identical.
+
+#### Superseded again: `lineHeight` must not constrain `maxTextSize`
+
+The two knobs were validated as a pair, `maxTextSize` capped at `30 / lineHeight`, so a `lineHeight`
+of 2.4 rejected the documented default of 13 with a message naming `1..12` as the range and 13 as the
+default in the same breath. A DSL whose default is invalid at some setting of another property is
+incoherent, and the premise behind the coupling does not hold: the bound existed to keep the *band*
+inside the mask's safe zone.
+
+The band does not have to be inside it. The centre line is pinned, so thickness grows symmetrically
+about it — the corner-side edge moves towards the corner, where a launcher's mask declines to draw it,
+and the inner edge moves towards the middle of the icon, which is taste. Neither costs the text
+anything, because the text is fitted against the chord across the safe zone and that chord does not
+depend on the thickness. **Only the text has to stay inside the safe zone.**
+
+So each value is now bounded on its own. `maxTextSize` stops at 21: the glyphs reach half their cap
+height either side of the centre line, which sits `0.198 * s` from the icon's centre, and the rim is at
+`0.306 * s`, so `2 * (0.306 - 0.198) = 21.5%` of the edge is where the mask starts cutting into the
+glyphs themselves. `lineHeight` keeps `1.0..3.0` as a sanity range — 1.0 is now genuinely the point
+where the band is the height of the glyphs, and the range still has to catch a 0 or negative value,
+which is a degenerate or inverted band. `BannerTextSize` is renamed `BannerGeometryBounds`, since
+there is no longer a text size being checked against anything but the mask.
+
+Defaults re-tuned rather than preserved. 13 and 1.5 are the same numbers, but 1.5 is now argued from
+the mask rather than from continuity with the band-width knob it replaced — that continuity argument
+was itself computed in axis units, so it was matching one wrong number to another. Honestly measured
+it leaves a quarter of the cap height clear at each edge, and at `maxTextSize = 13` the band's
+corner-side edge still lands inside the safe zone (`0.295 * s` against `0.306 * s`), so even a short
+marker's band is drawn in full under every mask; looser than that loses the corner of the band and
+pushes the inner edge across the artwork. Rendered side by side at 1.0, 1.25, 1.5, 1.75 and 2.0, that
+is also where it stops looking crowded and has not yet started looking heavy. The sample app drops
+from `lineHeight = 2.2` to 1.8: 2.2 was what it took to get an 11.7-unit band out of the old
+arithmetic, and 1.8 is what asks for one.
+
 ### Failure policy
 
 Deliberately quiet, because this is a debug convenience rather than a correctness feature:
