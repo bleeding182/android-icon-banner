@@ -18,3 +18,5 @@
 *.jpg binary
 *.keystore binary
 *.jks binary
+*.ttf binary
+*.otf binary
