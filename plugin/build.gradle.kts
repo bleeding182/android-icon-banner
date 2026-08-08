@@ -93,9 +93,10 @@ publishing {
     }
 
     repositories {
-        // Testing ground until the plugin settles; the Gradle Plugin Portal is the eventual home
-        // and `plugin-publish` above already targets it. GitHub Packages needs a token even for
-        // public packages, so consumers have to supply credentials too.
+        // A second copy of every release, and somewhere for snapshots to go: the Gradle Plugin
+        // Portal, which `plugin-publish` above targets, is what consumers resolve from and it takes
+        // releases only. GitHub Packages needs a token even for public packages, so anyone reading
+        // from here has to supply credentials.
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/bleeding182/android-icon-banner")

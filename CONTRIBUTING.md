@@ -9,6 +9,13 @@
 The plugin lives in `plugin/`, its own Gradle build, included from the root build's plugin
 management. `:app` exists only as a demo and a manual visual check.
 
+**A JDK 17 has to be installed.** The plugin is compiled for 17, the floor AGP 9 sets, and pins that
+with a Java toolchain; `plugin/settings.gradle.kts` configures no toolchain resolver, so Gradle
+detects a 17 rather than downloading one. Building the demo app additionally needs the *included*
+build to find it, which is why CI passes
+`-Porg.gradle.java.installations.paths="$JAVA_HOME"` — do the same if a local 17 sits somewhere
+Gradle does not look.
+
 Design decisions and their reasoning are in [`specs/`](specs/icon-banner-gradle-plugin.md). Read the
 relevant part before changing behaviour rather than inferring intent from the code.
 

@@ -86,7 +86,7 @@ everything else. A `null` only clears the value if nothing higher up assigns one
 
 ```kotlin
 android {
-    iconBanner { text = "UNRELEASED" }               // every variant, unless overridden
+    iconBanner { text = "PREVIEW" }                  // every variant, unless overridden
     productFlavors {
         create("dev") { iconBanner { text = "DEV" } }
         create("prod") { iconBanner { text = null } } // no banner — unless a build type sets one

@@ -184,7 +184,7 @@ internal class BannerPainter(
          * 4dp is about 12 physical pixels at xxhdpi and 8 at xhdpi — the floor at which uppercase
          * glyphs are still distinguishable from a smear. It is deliberately well under anything
          * anyone would choose on purpose: with the default style in Roboto Mono 700 it clears
-         * `DEBUG` (7.4dp) and `STAGING` (5.4dp) and catches `STAGING RC1` (3.6dp), which is the case
+         * `DEBUG` (7.3dp) and `STAGING` (5.4dp) and catches `STAGING RC1` (3.6dp), which is the case
          * that prompted it.
          */
         const val MIN_LEGIBLE_CAP_HEIGHT_DP: Double = 4.0

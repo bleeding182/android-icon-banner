@@ -233,7 +233,7 @@ android {
   iconBanner {                    // project-level defaults
     color = "#FF0000"
     textColor = "#FFFFFF"
-    corner = TOP_LEFT
+    corner = TOP_LEFT             // shipped as a bare accessor, `corner = topLeft`, so no import
     height = 20                   // superseded: now maxTextSize + lineHeight, see Geometry
     font = "Roboto Mono"
     weight = 700
@@ -385,6 +385,15 @@ Measured on the sample app before the fix, from the generated `pathData` project
 normal: a 10.14 band around a 6.52 cap height, the glyphs filling 64% of it with 1.81 clear on each
 side. Afterwards the band is exactly `capHeight * lineHeight`, whatever `lineHeight` is set to.
 
+The same mistake is in the edge offsets quoted for 0.72 above, and they are worth correcting here
+rather than leaving to be re-derived: at the default style the inner edge sits `0.100 * s` from the
+icon's centre and the corner-side edge `0.295 * s` — not `0.129` and `0.267` — against a rim at
+`0.306 * s`. At 0.80 the inner edge is `0.044 * s`, not `0.073`. The band is thicker than that
+paragraph thought, so it reaches closer to the rim on one side and closer to the centre on the other;
+the conclusion it was drawn for survives, because at the default the corner-side edge is still inside
+the safe zone and the centre of the artwork is still uncovered. `Ribbon.CENTRE_LINE_FRACTION` carries
+the corrected figures.
+
 The fix is naming, not a correction factor sprinkled at the call site. Axis-measured lengths carry an
 `Axis` suffix — `centreLineAxis`, `innerEdgeAxis`, `cornerSideEdgeAxis`, `bandWidthAxis` — everything
 else is a true distance, and `Ribbon.perpendicularFromIconCentre` is the only place the two meet. The
@@ -429,8 +438,9 @@ corner-side edge still lands inside the safe zone (`0.295 * s` against `0.306 * 
 marker's band is drawn in full under every mask; looser than that loses the corner of the band and
 pushes the inner edge across the artwork. Rendered side by side at 1.0, 1.25, 1.5, 1.75 and 2.0, that
 is also where it stops looking crowded and has not yet started looking heavy. The sample app drops
-from `lineHeight = 2.2` to 1.8: 2.2 was what it took to get an 11.7-unit band out of the old
-arithmetic, and 1.8 is what asks for one.
+from `lineHeight = 2.2` to 1.8, and not because 2.2 was equivalent to it: 2.2 drew a 10.1 band under
+the old arithmetic and asks for 14.3 under the fixed one, so keeping it would have made the preview
+heavier than anything the defaults produce. 1.8 asks for the 11.7 the demo wants.
 
 ### Failure policy
 
