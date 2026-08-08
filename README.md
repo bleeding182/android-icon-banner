@@ -184,6 +184,28 @@ To publish a build for testing:
 ./gradlew -p plugin publishToMavenLocal      # or just locally
 ```
 
+### Previews
+
+The images above are generated from the demo app, so they follow whatever `app/build.gradle.kts`
+configures — change the corner, text or font and rerun:
+
+```bash
+./scripts/preview.sh              # docs/preview.png
+./scripts/preview-monochrome.sh   # docs/preview-monochrome.gif
+```
+
+Both need `python3`, `inkscape` and `imagemagick`. `scripts/vd2svg.py` will also preview any single
+drawable:
+
+```bash
+python3 scripts/vd2svg.py out.svg mono.xml --mask --tint '#D32F2F' --background '#F6DEDE'
+```
+
+It is a previewer rather than a real VectorDrawable renderer, and
+[`scripts/CLAUDE.md`](scripts/CLAUDE.md) lists what it does not cover. The output is reconstructed
+from the generated XML, not captured from a device — for anything load-bearing, install the app and
+look at it.
+
 ## Credits
 
 Modelled on a [browser-based banner generator](https://bleeding182.github.io/tools/banner_generator.html)
