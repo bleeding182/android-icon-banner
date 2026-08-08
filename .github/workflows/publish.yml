@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, e.g. 0.0.1-SNAPSHOT"
+        description: "Version to publish to GitHub Packages, e.g. 0.0.1-SNAPSHOT"
         required: false
         default: "0.0.1-SNAPSHOT"
 
@@ -15,7 +15,9 @@ permissions:
   packages: write # GITHUB_TOKEN is enough to publish; no personal access token needed.
 
 jobs:
-  publish:
+  # Snapshots and releases both land here. Reading them needs a read:packages token, which is why
+  # the Plugin Portal below is the one consumers are meant to use.
+  packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,3 +56,29 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Tags only: the Portal rejects SNAPSHOT versions, and a published version cannot be replaced.
+  portal:
+    if: github.ref_type == 'tag'
+    needs: packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Require an Android SDK
+        run: |
+          test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
+            || { echo "No Android SDK on this runner; the functional tests would silently skip."; exit 1; }
+
+      - name: Publish to the Gradle Plugin Portal
+        run: ./gradlew -p plugin publishPlugins -PpluginVersion=${GITHUB_REF_NAME#v}
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
