@@ -12,15 +12,30 @@ management. `:app` exists only as a demo and a manual visual check.
 Design decisions and their reasoning are in [`specs/`](specs/icon-banner-gradle-plugin.md). Read the
 relevant part before changing behaviour rather than inferring intent from the code.
 
-## Publishing a test build
+## Publishing
+
+Releases go to GitHub Packages. Tag a version and the `Publish` workflow does the rest — it needs no
+personal access token, because Actions injects a `GITHUB_TOKEN` and `permissions: packages: write`
+is enough:
 
 ```bash
-./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
-./gradlew -p plugin publishToMavenLocal      # or just locally
+git tag v0.0.1 && git push origin v0.0.1
 ```
 
-Credentials come from `gpr.user` / `gpr.key` in `~/.gradle/gradle.properties`, or from
-`GITHUB_ACTOR` / `GITHUB_TOKEN`. Never commit either.
+The tag name without its leading `v` becomes the version, via `-PpluginVersion`. A
+`workflow_dispatch` run publishes a snapshot instead, for shaking things out without a tag.
+
+Locally:
+
+```bash
+./gradlew -p plugin publishToMavenLocal   # to consume it from another project
+./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
+```
+
+The manual push needs a token with `write:packages` in `gpr.user` / `gpr.key`. Never commit one.
+
+Consumers need a `read:packages` token too — GitHub requires auth on Maven reads even for public
+packages. Moving to the Gradle Plugin Portal is what removes that.
 
 ## Previews
 

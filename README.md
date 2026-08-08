@@ -10,7 +10,7 @@ launcher, in recents, or in app info. Mark the variants you choose; the rest sta
 ```kotlin
 plugins {
     id("com.android.application")
-    id("com.github.bleeding182.iconbanner") version "0.1.0-SNAPSHOT"
+    id("com.github.bleeding182.iconbanner") version "0.0.1-SNAPSHOT"
 }
 
 android {
@@ -34,22 +34,17 @@ dynamic-feature module does nothing, so a convention plugin can apply it everywh
 
 ## Setup
 
-> Not published yet — the first release is coming to GitHub Packages shortly. Until then, build it
-> locally with `./gradlew -p plugin publishToMavenLocal` and add `mavenLocal()`.
-
-GitHub Packages needs authentication even for public packages, so put `gpr.user` and `gpr.key` (a
-token with `read:packages`) in your `~/.gradle/gradle.properties`, then add the repository in
-`settings.gradle.kts`:
+Until this lands on the Gradle Plugin Portal it publishes to GitHub Packages, which requires
+authentication even for public packages. Put `gpr.user` and `gpr.key` (a token with `read:packages`)
+in your `~/.gradle/gradle.properties`, then add the repository in `settings.gradle.kts`:
 
 ```kotlin
 pluginManagement {
     repositories {
         maven("https://maven.pkg.github.com/bleeding182/android-icon-banner") {
             credentials {
-                username = providers.gradleProperty("gpr.user")
-                    .orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
-                password = providers.gradleProperty("gpr.key")
-                    .orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+                username = providers.gradleProperty("gpr.user").orNull
+                password = providers.gradleProperty("gpr.key").orNull
             }
         }
         gradlePluginPortal()

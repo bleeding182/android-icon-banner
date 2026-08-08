@@ -4,7 +4,8 @@ plugins {
 }
 
 group = "com.github.bleeding182"
-version = "0.1.0-SNAPSHOT"
+// A release build passes -PpluginVersion=<tag without the leading v>; see .github/workflows/publish.yml.
+version = providers.gradleProperty("pluginVersion").getOrElse("0.0.1-SNAPSHOT")
 
 dependencies {
     // AGP variant API. compileOnly: the consuming build always brings its own AGP.

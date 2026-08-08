@@ -1,0 +1,56 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.0.1-SNAPSHOT"
+        required: false
+        default: "0.0.1-SNAPSHOT"
+
+permissions:
+  contents: read
+  packages: write # GITHUB_TOKEN is enough to publish; no personal access token needed.
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Require an Android SDK
+        run: |
+          test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
+            || { echo "No Android SDK on this runner; the functional tests would silently skip."; exit 1; }
+
+      # A tag publishes its own version; a manual run publishes whatever it was given.
+      - name: Resolve the version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing $version"
+
+      - name: Test before publishing
+        run: ./gradlew -p plugin build -PpluginVersion=${{ steps.version.outputs.value }}
+
+      - name: Publish to GitHub Packages
+        run: >
+          ./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
+          -PpluginVersion=${{ steps.version.outputs.value }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
