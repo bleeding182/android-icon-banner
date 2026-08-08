@@ -60,7 +60,7 @@ jobs:
       - name: Build the demo app
         run: >
           ./gradlew -Porg.gradle.java.installations.paths="$JAVA_HOME"
-          :app:assembleDevDebug :app:assembleProdDebug
+          :app:assembleStagingDebug :app:assembleProdDebug
 
       - name: Upload test reports
         if: failure()
