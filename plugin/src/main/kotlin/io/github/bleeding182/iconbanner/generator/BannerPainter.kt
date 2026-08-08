@@ -107,16 +107,19 @@ internal class BannerPainter(
         val fitted = text.fit(style.text, ribbon) ?: return null
         val onScreenDp = fitted.capHeight / ribbon.s * LAUNCHER_DP_PER_EDGE
         if (onScreenDp < MIN_LEGIBLE_CAP_HEIGHT_DP) {
+            // Two decimals on the dp figure, not one: at the threshold, %.1f rounds 3.98 to "4.0"
+            // and the message then reads as though 4dp were below a 4dp minimum.
             warnings += String.format(
                 Locale.ROOT,
                 "The banner text \"%s\" (%d characters) had to be shrunk to a cap height of %.2f in a " +
-                    "%.0f viewport to fit the ribbon — roughly %.1fdp on a launcher icon, which is " +
-                    "too small to read. Use shorter text, or a larger iconBanner.height.",
+                    "%.0f viewport to fit the ribbon — about %.2fdp on a launcher icon, under the " +
+                    "%.0fdp needed to stay readable. Use shorter text, or a larger iconBanner.height.",
                 style.text,
                 style.text.length,
                 fitted.capHeight,
                 ribbon.s,
                 onScreenDp,
+                MIN_LEGIBLE_CAP_HEIGHT_DP,
             )
         }
         return fitted.pathData

@@ -37,7 +37,7 @@ gradlePlugin {
         create("iconBanner") {
             id = "io.github.bleeding182.iconbanner"
             implementationClass = "io.github.bleeding182.iconbanner.IconBannerPlugin"
-            displayName = "Android Icon Banner"
+            displayName = "Icon Banner for Android"
             description = "Adds a per-variant banner to the Android launcher icon, so a dev build " +
                 "is distinguishable from production on a device that has both installed."
             tags = listOf("android", "launcher-icon", "build-variants", "agp")

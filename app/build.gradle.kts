@@ -24,7 +24,7 @@ android {
         color = "#FF0000"
         textColor = "#FFFFFF"
         corner = bottomRight
-        height = 32
+        height = 40
         font = "Black Ops One"
         weight = 400
     }
@@ -35,7 +35,7 @@ android {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             iconBanner {
-                text = "2026"
+                text = "STAGING"
             }
         }
         create("prod") {
