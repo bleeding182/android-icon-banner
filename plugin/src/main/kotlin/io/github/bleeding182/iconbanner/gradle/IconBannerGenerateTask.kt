@@ -1,9 +1,10 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.IconBannerComponents
-import io.github.bleeding182.iconbanner.api.BannerCorner
+import io.github.bleeding182.iconbanner.api.BannerLayer
 import io.github.bleeding182.iconbanner.api.BannerRequest
 import io.github.bleeding182.iconbanner.api.BannerStyle
+import io.github.bleeding182.iconbanner.api.FontSpec
 import io.github.bleeding182.iconbanner.api.GenerationResult
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -11,13 +12,13 @@ import org.gradle.api.file.Directory
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFile
-import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -25,34 +26,20 @@ import org.gradle.api.tasks.TaskAction
 import javax.inject.Inject
 
 /**
- * Writes the bannered copies of the launcher icon into a generated resource directory registered
- * with the variant. Because that directory outranks every source set, the copies replace the
- * originals for this variant only, and the checked-in resources are never touched.
+ * Writes bannered copies of the launcher icon into a generated resource directory. That directory
+ * outranks every source set, so the copies replace the originals for this variant only.
  */
 @CacheableTask
 abstract class IconBannerGenerateTask : DefaultTask() {
 
-    @get:Input
-    abstract val text: Property<String>
+    /** In declaration order, never empty. Paint order needs `z`, which is lazy, so [generate] sorts. */
+    @get:Nested
+    abstract val banners: ListProperty<BannerInput>
 
-    @get:Input
-    abstract val color: Property<String>
-
-    @get:Input
-    abstract val textColor: Property<String>
-
-    @get:Input
-    abstract val corner: Property<BannerCorner>
-
-    @get:Input
-    abstract val maxTextSize: Property<Int>
-
-    @get:Input
-    abstract val lineHeight: Property<Double>
-
-    @get:InputFile
+    /** [IconBannerFontTask]'s output. Each banner picks its own face out of it by [fontFileName]. */
+    @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val fontFile: RegularFileProperty
+    abstract val fontDirectory: DirectoryProperty
 
     /** Ordered highest priority first. Parsed at execution time for the icon resource names. */
     @get:InputFiles
@@ -60,16 +47,16 @@ abstract class IconBannerGenerateTask : DefaultTask() {
     abstract val manifestFiles: ListProperty<RegularFile>
 
     /**
-     * The variant's *static* resource roots, ordered highest priority first. Never `sources.res.all`
-     * — that includes this task's own output directory and forms a dependency cycle.
+     * Highest priority first. Never `sources.res.all` — that includes this task's own output and
+     * forms a dependency cycle.
      */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resourceDirectories: ListProperty<Directory>
 
     /**
-     * Project-relative paths of [resourceDirectories], in order. The file fingerprint alone does not
-     * capture priority, and priority decides which of two same-named files gets bannered.
+     * The file fingerprint does not capture priority, and priority decides which of two same-named
+     * files gets bannered.
      */
     @get:Input
     abstract val resourceDirectoryOrder: ListProperty<String>
@@ -90,19 +77,12 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         val resources = DirectoryResourceLookup(roots)
         val declared = ManifestIcons.read(manifestFiles.get().map { it.asFile })
         val roundIcon = declared.roundIconToBanner(resources)
+        val fonts = fontDirectory.get()
 
-        val maxTextSizeValue = maxTextSize.get()
-        val lineHeightValue = lineHeight.get()
-        BannerGeometryBounds.check(maxTextSizeValue, lineHeightValue, variant)
-
-        val style = BannerStyle(
-            text = text.get(),
-            color = ColorFormat.check(color.get(), "color", variant),
-            textColor = ColorFormat.check(textColor.get(), "textColor", variant),
-            corner = corner.get(),
-            maxTextSizePercent = maxTextSizeValue.toDouble(),
-            lineHeight = lineHeightValue,
-        )
+        val layers = banners.get()
+            // A stable sort, so declaration order *is* the z tie-break.
+            .sortedBy { it.z.get() }
+            .map { it.toLayer(variant, fonts) }
 
         val output = outputDirectory.get().asFile
         fileSystem.delete { delete(output) }
@@ -110,8 +90,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
 
         val result = IconBannerComponents.generator().generate(
             BannerRequest(
-                style = style,
-                fontFile = fontFile.get().asFile,
+                layers = layers,
                 icon = declared.icon,
                 roundIcon = roundIcon,
                 resources = resources,
@@ -119,8 +98,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         )
 
         when (result) {
-            // The generator has no idea which variant it was invoked for, and a message that says
-            // what went wrong but not where is hard to act on in a build with many variants.
+            // The generator does not know its variant, and the message has to say where.
             is GenerationResult.Failure ->
                 throw GradleException("icon banner ($variant): ${result.message}")
             is GenerationResult.Success -> {
@@ -129,21 +107,46 @@ abstract class IconBannerGenerateTask : DefaultTask() {
                     file.parentFile?.mkdirs()
                     file.writeText(content)
                 }
-                // One visible line per bannered variant. The worst thing this plugin can do to a
-                // user is banner a release build unnoticed, which a project-level
-                // `iconBanner { text = "…" }` does to every variant — and the override itself is
-                // completely silent: no merger message, no lint warning. At `info` nobody sees it.
+                // Lifecycle, not info: bannering a release build unnoticed is the worst thing this can do.
                 logger.lifecycle(
-                    "icon banner: variant '{}' replaces {} with a \"{}\" bannered copy",
+                    "icon banner: variant '{}' replaces {} with a bannered copy: {}",
                     variant,
                     declared.icon,
-                    style.text,
+                    layers.joinToString(", ") { "${it.style.name} = \"${it.style.text}\"" },
                 )
-                // Which files were displaced, and how, stays at info: it is the detail behind that
-                // line rather than something every build needs to print.
                 for (note in result.info) logger.info("icon banner ($variant): {}", note)
                 for (warning in result.warnings) logger.warn("icon banner ($variant): {}", warning)
             }
         }
+    }
+
+    /**
+     * Validated here rather than in the DSL because a `Provider` colour cannot be checked without
+     * forcing it.
+     */
+    private fun BannerInput.toLayer(variant: String, fonts: Directory): BannerLayer {
+        val banner = name.get()
+        val maxTextSizeValue = maxTextSize.get()
+        val lineHeightValue = lineHeight.get()
+        val positionValue = position.get()
+        val monochromeAlphaValue = monochromeAlpha.get()
+        BannerBounds.check(
+            maxTextSizeValue, lineHeightValue, positionValue, monochromeAlphaValue, variant, banner,
+        )
+        val face = FontSpec(fontFamily.get(), fontWeight.get(), fontItalic.get())
+        return BannerLayer(
+            style = BannerStyle(
+                name = banner,
+                text = text.get(),
+                color = ColorFormat.check(color.get(), "color", variant, banner),
+                textColor = ColorFormat.check(textColor.get(), "textColor", variant, banner),
+                monochromeAlphaPercent = monochromeAlphaValue.toDouble(),
+                corner = corner.get(),
+                positionPercent = positionValue.toDouble(),
+                maxTextSizePercent = maxTextSizeValue.toDouble(),
+                lineHeight = lineHeightValue,
+            ),
+            fontFile = fonts.file(fontFileName(face)).asFile,
+        )
     }
 }

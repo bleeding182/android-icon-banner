@@ -9,11 +9,8 @@ import org.w3c.dom.Document
 import org.w3c.dom.Element
 
 /**
- * The pure seam: launcher icon references in, resource file contents out.
- *
- * Deliberately free of Gradle, AGP, the network and the filesystem — the only file it reads is the
- * TrueType font it is handed. Everything the plugin can get wrong about geometry, XML rewriting and
- * number formatting is reachable from here with a plain unit test.
+ * Launcher icon references in, resource file contents out. Free of Gradle, AGP, the network and
+ * the filesystem — the only file it reads is the font it is handed.
  */
 internal class DefaultBannerGenerator : BannerGenerator {
 
@@ -27,11 +24,8 @@ internal class DefaultBannerGenerator : BannerGenerator {
 
     companion object {
         /**
-         * Appended to a drawable's name when its monochrome banner cannot reuse the original name.
-         *
-         * Plugin-namespaced on purpose: the generator refuses to overwrite an existing resource
-         * with this name, and a distinctive suffix makes that collision essentially impossible to
-         * hit by accident.
+         * Used when a monochrome banner cannot reuse the original name. Namespaced because the
+         * generator refuses to overwrite an existing resource called this.
          */
         const val MONOCHROME_SUFFIX: String = "_iconbanner_mono"
     }
@@ -39,37 +33,39 @@ internal class DefaultBannerGenerator : BannerGenerator {
 
 private class Session(private val request: BannerRequest) {
 
-    private val style = request.style
-
     /** Sorted, so output order does not depend on [io.github.bleeding182.iconbanner.api.ResourceLookup] iteration order. */
     private val outputs = sortedMapOf<String, String>()
     private val info = mutableListOf<String>()
 
-    /**
-     * A set, not a list: the same text is fitted once per qualifier variant of the icon, and one
-     * illegibility complaint per build is plenty.
-     */
+    /** A set: the same text is fitted once per qualifier variant, and one complaint is plenty. */
     private val warnings = linkedSetOf<String>()
 
-    private val painter: BannerPainter by lazy {
-        val font = try {
-            BannerText(request.fontFile)
-        } catch (e: Exception) {
-            fail("Could not read the banner font ${request.fontFile}: ${e.message}")
+    /** One painter per banner, in paint order — the order [BannerRequest.layers] is already in. */
+    private val painters: List<BannerPainter> by lazy {
+        // Banners routinely share a face, and parsing a TrueType file is not free.
+        val faces = mutableMapOf<java.io.File, BannerText>()
+        request.layers.map { layer ->
+            val font = faces.getOrPut(layer.fontFile) {
+                try {
+                    BannerText(layer.fontFile)
+                } catch (e: Exception) {
+                    fail("Could not read the banner font ${layer.fontFile}: ${e.message}")
+                }
+            }
+            font.firstUndisplayableCharacter(layer.style.text)?.let { character ->
+                fail(
+                    "The banner font ${layer.fontFile.name} has no glyph for $character in the banner " +
+                        "text \"${layer.style.text}\". Choose a font that covers it, or change the text."
+                )
+            }
+            BannerPainter(layer.style, font, warnings, nameWarnings = request.layers.size > 1)
         }
-        font.firstUndisplayableCharacter(style.text)?.let { character ->
-            fail(
-                "The banner font ${request.fontFile.name} has no glyph for $character in the banner " +
-                    "text \"${style.text}\". Choose a font that covers it, or change the text."
-            )
-        }
-        BannerPainter(style, font, warnings)
     }
 
     fun run(): GenerationResult {
-        // Force the font up front, so a text/font mismatch is reported before anything about the
-        // project's resources. It is the user's own configuration and the easier thing to act on.
-        painter
+        // Fonts first: a text/font mismatch is the user's own configuration, and easier to act on.
+        painters
+        warnAboutSharedCorners()
         val icons = listOfNotNull(request.icon, request.roundIcon).distinct()
         icons.forEach(::processIcon)
         return GenerationResult.Success(
@@ -79,14 +75,31 @@ private class Session(private val request: BannerRequest) {
         )
     }
 
+    /**
+     * A warning rather than a failure: `z` exists so a user can say which overlapping banner wins.
+     *
+     * Only the *same* corner. Adjacent corners cross too, but near the middle of the icon, and two
+     * corners are a layout somebody chose.
+     */
+    private fun warnAboutSharedCorners() {
+        request.layers.groupBy { it.style.corner }
+            .filterValues { it.size > 1 }
+            .forEach { (corner, sharing) ->
+                val names = sharing.joinToString(", ") { "\"${it.style.name}\"" }
+                warnings += "Banners $names share the $corner corner and will overlap. They are " +
+                    "painted in that order, so \"${sharing.first().style.name}\" may end up hidden " +
+                    "under the others. Move one to another corner, or set iconBanner z to choose " +
+                    "which is on top."
+            }
+    }
+
     private fun processIcon(ref: ResourceRef) {
         for (source in xmlSourcesOf(ref, subject = "Launcher icon $ref")) {
             val document = AndroidXml.parse(source.xml!!, source.relativePath)
             when (val root = document.documentElement.localNameOrTag()) {
                 "adaptive-icon" -> processAdaptiveIcon(source, document)
-                // An app that never migrated to adaptive icons: banner the vector directly. There
-                // is no monochrome layer to produce, because there is nowhere to declare one.
-                "vector" -> if (emit(source.relativePath, painter.colored(document, source.relativePath))) {
+                // No adaptive icon: banner the vector directly. Nowhere to declare a monochrome layer.
+                "vector" -> if (emit(source.relativePath, paint(document, source.relativePath, Mode.COLORED))) {
                     info += "${source.relativePath} replaced by a bannered copy"
                 }
                 else -> fail(
@@ -97,10 +110,7 @@ private class Session(private val request: BannerRequest) {
         }
     }
 
-    /**
-     * Foreground gets the coloured banner; monochrome gets the clip-and-punch treatment. Background
-     * is read past and never touched — the ribbon belongs on the artwork, not behind it.
-     */
+    /** Foreground gets the coloured banner, monochrome the clip-and-punch. Background is untouched. */
     private fun processAdaptiveIcon(source: SourceResource, document: Document) {
         val root = document.documentElement
         val path = source.relativePath
@@ -123,9 +133,8 @@ private class Session(private val request: BannerRequest) {
             return
         }
 
-        // Foreground and monochrome share one drawable — the default Android Studio template. One
-        // resource name cannot hold both the coloured and the punched-out version, so the
-        // monochrome copy gets a reserved name and the adaptive icon is redirected to it.
+        // Foreground and monochrome share a drawable (the Studio template), and one resource name
+        // cannot hold both versions. The monochrome copy gets a reserved name.
         val reserved = ResourceRef(
             monochromeRef.type,
             monochromeRef.name + DefaultBannerGenerator.MONOCHROME_SUFFIX,
@@ -146,6 +155,23 @@ private class Session(private val request: BannerRequest) {
 
     private enum class Mode { COLORED, MONOCHROME }
 
+    /**
+     * Every banner onto one document, serialised once.
+     *
+     * The monochrome phases interleave: each clip wraps whatever is at the root, so all of them must
+     * be in place before the first ribbon is appended.
+     */
+    private fun paint(document: Document, describedAs: String, mode: Mode): String {
+        when (mode) {
+            Mode.COLORED -> painters.forEach { it.paintColored(document, describedAs) }
+            Mode.MONOCHROME -> {
+                painters.forEach { it.clipMonochrome(document, describedAs) }
+                painters.forEach { it.punchMonochrome(document, describedAs) }
+            }
+        }
+        return AndroidXml.serialize(document)
+    }
+
     private fun bannerVector(
         ref: ResourceRef,
         mode: Mode,
@@ -163,10 +189,7 @@ private class Session(private val request: BannerRequest) {
                         "A banner can only be added to a <vector>."
                 )
             }
-            val content = when (mode) {
-                Mode.COLORED -> painter.colored(document, describedAs)
-                Mode.MONOCHROME -> painter.monochrome(document, describedAs)
-            }
+            val content = paint(document, describedAs, mode)
             if (renameTo == null) {
                 if (emit(source.relativePath, content)) {
                     info += "${source.relativePath} replaced by a bannered copy"
@@ -183,10 +206,8 @@ private class Session(private val request: BannerRequest) {
     /**
      * Every XML file backing [ref], sorted by path.
      *
-     * Raster variants are dropped without comment — bannering them is explicitly out of scope, and
-     * a per-build warning about a shelved feature is just noise. A resource with *no* XML at all is
-     * a different matter: the variant asked for a marking and would silently get none, which is the
-     * exact failure this plugin exists to prevent.
+     * Rasters are dropped silently. *No* XML fails instead: the variant asked for a marking and
+     * would otherwise silently get none.
      */
     private fun xmlSourcesOf(ref: ResourceRef, subject: String): List<SourceResource> {
         val all = request.resources.find(ref)
@@ -206,8 +227,7 @@ private class Session(private val request: BannerRequest) {
     private fun emit(path: String, content: String): Boolean {
         val existing = outputs[path]
         if (existing != null) {
-            // icon and roundIcon routinely share a foreground, so re-deriving identical content is
-            // expected. Genuinely different content for one path would be a generator bug.
+            // icon and roundIcon routinely share a foreground; differing content would be a bug.
             if (existing != content) {
                 fail("Internal error: two different banner results were produced for $path.")
             }

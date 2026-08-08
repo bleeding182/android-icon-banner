@@ -17,10 +17,8 @@ internal const val DSL_NAME = "iconBanner"
  * slot, so the block inside `android { }` is the defaults slot.
  */
 internal fun registerIconBanner(project: Project, components: ApplicationAndroidComponentsExtension) {
-    // Before anything else touches AGP: everything below is written against the AGP 9 variant API,
-    // and on AGP 8 the first call into it dies with a linkage error naming an internal class, which
-    // tells the user nothing about what to do. `pluginVersion` and the major/minor/micro accessors
-    // have been on AndroidComponents since AGP 7, so asking is itself safe.
+    // Before anything touches the AGP 9 variant API: on AGP 8 the first call dies with a linkage
+    // error naming an internal class. pluginVersion itself has been safe since AGP 7.
     val version = components.pluginVersion
     unsupportedAgpMessage(version.major, version.minor, version.micro)?.let { throw GradleException(it) }
 
@@ -35,7 +33,6 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
     }
 
     components.onVariants(components.selector().all()) { variant ->
-        // Nested components — the androidTest APK above all — get no banner.
         configureVariant(project, variant)
     }
 }
@@ -43,11 +40,9 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
 /**
  * Why this AGP is too old, or null when it will do.
  *
- * Takes the version apart rather than an [com.android.build.api.AndroidPluginVersion], so the rule
- * itself is unit-testable — AGP is `compileOnly` and no AGP type exists on the test classpath.
- * Previews of the minimum are accepted: `AndroidPluginVersion` sorts `9.3.0-alpha01` below `9.3.0`,
- * but a nightly of the version the plugin is built against is a fine thing to develop against and
- * refusing it would only be annoying.
+ * Takes the version apart rather than an [com.android.build.api.AndroidPluginVersion], so the rule is
+ * unit-testable — AGP is `compileOnly`, so no AGP type exists on the test classpath. Previews of the
+ * minimum are accepted, where `AndroidPluginVersion` would sort `9.3.0-alpha01` below `9.3.0`.
  */
 internal fun unsupportedAgpMessage(major: Int, minor: Int, micro: Int): String? {
     if (major > MINIMUM_AGP_MAJOR || (major == MINIMUM_AGP_MAJOR && minor >= MINIMUM_AGP_MINOR)) return null
@@ -73,9 +68,9 @@ private fun precedenceChain(config: VariantExtensionConfig<out ApplicationVarian
     }
 
 private fun configureVariant(project: Project, variant: ApplicationVariant) {
-    // Enablement was decided at configuration time from assignment alone, so a variant with no
-    // banner never gets a task registered.
-    val banner = variant.getExtension(IconBannerVariantExtension::class.java)?.banner ?: return
+    // Decided at configuration time from assignment alone.
+    val resolved = variant.getExtension(IconBannerVariantExtension::class.java)?.banners.orEmpty()
+    if (resolved.isEmpty()) return
 
     val res = variant.sources.res
     if (res == null) {
@@ -94,17 +89,42 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
     val staticRes = res.static.map { layers -> layers.flatten() }
     val variantNameValue = variant.name
 
+    // One pair of tasks per variant, not per banner: they rewrite the same icon resources.
+    val objects = project.objects
+    val fontInputs = resolved.map { banner ->
+        objects.newInstance(FontInput::class.java).apply {
+            family.set(banner.fontFamily)
+            weight.set(banner.fontWeight)
+            italic.set(banner.fontItalic)
+        }
+    }
+    val bannerInputs = resolved.map { banner ->
+        objects.newInstance(BannerInput::class.java).apply {
+            name.set(banner.name)
+            text.set(banner.text)
+            color.set(banner.color)
+            textColor.set(banner.textColor)
+            monochromeAlpha.set(banner.monochromeAlpha)
+            corner.set(banner.corner)
+            position.set(banner.position)
+            maxTextSize.set(banner.maxTextSize)
+            lineHeight.set(banner.lineHeight)
+            z.set(banner.z)
+            fontFamily.set(banner.fontFamily)
+            fontWeight.set(banner.fontWeight)
+            fontItalic.set(banner.fontItalic)
+        }
+    }
+
     val fontTask = project.tasks.register("download${suffix}IconBannerFont", IconBannerFontTask::class.java)
     fontTask.configure {
         group = TASK_GROUP
-        description = "Fetches the TrueType face for the $variantNameValue icon banner."
-        family.set(banner.fontFamily)
-        weight.set(banner.fontWeight)
-        italic.set(banner.fontItalic)
+        description = "Fetches the TrueType faces for the $variantNameValue icon banners."
+        fonts.set(fontInputs)
         cacheDirectory.set(fontCache)
         offline.set(isOffline)
-        fontFile.set(
-            project.layout.buildDirectory.file("intermediates/icon_banner/font/$variantNameValue/banner.ttf")
+        outputDirectory.set(
+            project.layout.buildDirectory.dir("intermediates/icon_banner/font/$variantNameValue")
         )
     }
 
@@ -113,13 +133,8 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
         group = TASK_GROUP
         description = "Generates the bannered launcher icon resources for $variantNameValue."
         variantName.set(variantNameValue)
-        text.set(banner.text)
-        color.set(banner.color)
-        textColor.set(banner.textColor)
-        corner.set(banner.corner)
-        maxTextSize.set(banner.maxTextSize)
-        lineHeight.set(banner.lineHeight)
-        fontFile.set(fontTask.flatMap { it.fontFile })
+        banners.set(bannerInputs)
+        fontDirectory.set(fontTask.flatMap { it.outputDirectory })
         manifestFiles.set(manifests)
         resourceDirectories.set(staticRes)
         resourceDirectoryOrder.set(
@@ -133,12 +148,8 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
 private fun java.io.File.invariantPath(): String = path.replace('\\', '/')
 
 /**
- * Where downloaded fonts live. Shared across projects and outliving `clean`, because the design
- * deliberately bundles no fonts at all — the cache is what keeps "always download" from hurting.
- *
- * [FONT_CACHE_PROPERTY] overrides the location. CI can point it at a warmed, restorable directory,
- * and the plugin's own tests use it to stay off the network without writing into the developer's
- * real cache.
+ * Where downloaded fonts live. Shared across projects and outliving `clean`, since the plugin bundles
+ * no fonts at all. [FONT_CACHE_PROPERTY] overrides it, for CI and for keeping tests off the network.
  */
 private fun fontCacheDirectory(project: org.gradle.api.Project): java.io.File {
     val override = project.providers.gradleProperty(FONT_CACHE_PROPERTY).orNull

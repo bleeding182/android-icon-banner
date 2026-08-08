@@ -14,25 +14,28 @@ internal class GeneratorFailure(message: String) : Exception(message)
 internal fun fail(message: String): Nothing = throw GeneratorFailure(message)
 
 /**
- * Applies a banner to a parsed `<vector>` document, in the two forms the plugin needs.
+ * Applies one banner to a parsed `<vector>` document, in the two forms the plugin needs.
  *
- * Instances are single-use per document: both methods mutate the [Document] they are given.
+ * Every method mutates the [Document] and none of them serialises, so a caller can run several
+ * painters over one document and write it out once.
  */
 internal class BannerPainter(
     private val style: BannerStyle,
     private val text: BannerText,
-    /** Collects legibility complaints. A set, so repeating the same one per icon file is harmless. */
+    /**
+     * Legibility complaints, shared across the request. A set, so the same complaint raised for each
+     * qualifier variant of an icon folds into one line.
+     */
     private val warnings: MutableSet<String> = linkedSetOf(),
+    /** Whether a complaint names its banner. Only set when the request carries more than one. */
+    private val nameWarnings: Boolean = false,
 ) {
 
     /**
-     * Two `<path>` elements appended to the vector's root: the ribbon, then the text on top.
-     *
-     * Appending at root level rather than inserting anywhere clever means the banner draws above
-     * everything and is unaffected by whatever groups, transforms or clip-paths the original vector
-     * already contains.
+     * The ribbon, then the text on top, appended at the root — above everything, and unaffected by
+     * the original vector's groups and transforms. Painters stack in call order.
      */
-    fun colored(document: Document, describedAs: String): String {
+    fun paintColored(document: Document, describedAs: String) {
         val root = document.documentElement
         val ribbon = ribbonFor(root, describedAs)
         val prefix = AndroidXml.androidPrefix(root)
@@ -51,19 +54,17 @@ internal class BannerPainter(
                 }
             )
         }
-        return AndroidXml.serialize(document)
     }
 
     /**
-     * Clip-and-punch: the icon's own content moves into a `<group>` clipped to everything *outside*
-     * the ribbon, and the ribbon plus text becomes a single even-odd path.
+     * Clip-and-punch, first half: everything at the root moves into a `<group>` clipped to everything
+     * *outside* this ribbon, so opaque artwork cannot bleed into the band of a themed icon.
      *
-     * A themed icon keeps only alpha. Layering an opaque ribbon with opaque text on top of opaque
-     * artwork would therefore render as one solid, unreadable wedge. Clipping stops the artwork
-     * bleeding into the band, and even-odd turns the glyphs into transparent holes so the text
-     * reads as the icon's background colour.
+     * It wraps whatever is at the root, which is what makes several banners work: `VectorDrawable`
+     * **unions** two `<clip-path>` elements in one `<group>` rather than intersecting them, so the
+     * groups have to nest.
      */
-    fun monochrome(document: Document, describedAs: String): String {
+    fun clipMonochrome(document: Document, describedAs: String) {
         val root = document.documentElement
         val ribbon = ribbonFor(root, describedAs)
         val prefix = AndroidXml.androidPrefix(root)
@@ -74,11 +75,21 @@ internal class BannerPainter(
                 setAndroidAttribute(prefix, "pathData", ribbon.inverseClipPathData())
             }
         )
-        // Snapshot before moving: appendChild detaches from the old parent, which would otherwise
-        // renumber the live NodeList underneath us.
+        // Snapshot first: appendChild detaches, renumbering the live NodeList.
         val original = (0 until root.childNodes.length).map { root.childNodes.item(it) }
         original.forEach(group::appendChild)
         root.appendChild(group)
+    }
+
+    /**
+     * Second half: the ribbon and its text as one even-odd `<path>` at the root.
+     *
+     * Must run after *every* banner's [clipMonochrome], or the next group swallows this ribbon.
+     */
+    fun punchMonochrome(document: Document, describedAs: String) {
+        val root = document.documentElement
+        val ribbon = ribbonFor(root, describedAs)
+        val prefix = AndroidXml.androidPrefix(root)
 
         val ribbonAndText = listOfNotNull(
             ribbon.quadPathData(),
@@ -89,55 +100,49 @@ internal class BannerPainter(
             document.createVectorElement("path").apply {
                 setAndroidAttribute(prefix, "pathData", ribbonAndText)
                 setAndroidAttribute(prefix, "fillType", "evenOdd")
-                setAndroidAttribute(prefix, "fillColor", MONOCHROME_FILL)
+                setAndroidAttribute(prefix, "fillColor", monochromeFill(style.monochromeAlphaPercent))
             }
         )
-        return AndroidXml.serialize(document)
     }
 
-    /**
-     * The text's `pathData`, warning first if the ribbon's length forced it past readability.
-     *
-     * The fit has no floor — it will happily squeeze eleven characters into the length of three —
-     * and the result is a band of colour with an unreadable smear in it. That is not worth failing a
-     * build over, because only the user can say whether their text is worth the size, but it is
-     * worth saying out loud: the banner exists to be read.
-     */
+    /** The text's `pathData`, warning first if the fit forced it past readability. */
     private fun fittedOutline(ribbon: Ribbon): String? {
         val fitted = text.fit(style.text, ribbon) ?: return null
         val onScreenDp = fitted.capHeight / ribbon.s * LAUNCHER_DP_PER_EDGE
         if (onScreenDp < MIN_LEGIBLE_CAP_HEIGHT_DP) {
-            // Two decimals on the dp figure, not one: at the threshold, %.1f rounds 3.98 to "4.0"
-            // and the message then reads as though 4dp were below a 4dp minimum.
-            //
-            // No knob is suggested, deliberately. The length the text is competing for is the chord
-            // across the icon's safe zone, which is fixed geometry: iconBanner.maxTextSize is an
-            // upper bound and raising it changes nothing here, and lineHeight only thickens the band
-            // around text that is already too small. Shorter text, or a narrower face, is the whole
-            // list of things that helps.
-            warnings += String.format(
+            // Two decimals: %.1f rounds 3.98 to "4.0", reading as though 4dp were under a 4dp minimum.
+            // position is only named when it is what ran out — on the default it buys a few percent and
+            // costs the middle of the icon.
+            val remedy = if (style.positionPercent > Ribbon.DEFAULT_POSITION_PERCENT) {
+                String.format(
+                    Locale.ROOT,
+                    "The ribbon is shortened by the icon's mask and by iconBanner.position (%.0f, " +
+                        "against a default of %.0f), so pull the position back in, or use shorter " +
+                        "text or a narrower font.",
+                    style.positionPercent,
+                    Ribbon.DEFAULT_POSITION_PERCENT,
+                )
+            } else {
+                "The ribbon's length is fixed by the icon's mask, so use shorter text or a narrower " +
+                    "font."
+            }
+            warnings += (if (nameWarnings) "${style.name}: " else "") + String.format(
                 Locale.ROOT,
                 "The banner text \"%s\" (%d characters) had to be shrunk to a cap height of %.2f in a " +
                     "%.0f viewport to fit across the ribbon — about %.2fdp on a launcher icon, under " +
-                    "the %.0fdp needed to stay readable. The ribbon's length is fixed by the icon's " +
-                    "mask, so use shorter text or a narrower font.",
+                    "the %.0fdp needed to stay readable. ",
                 style.text,
                 style.text.length,
                 fitted.capHeight,
                 ribbon.s,
                 onScreenDp,
                 MIN_LEGIBLE_CAP_HEIGHT_DP,
-            )
+            ) + remedy
         }
         return fitted.pathData
     }
 
-    /**
-     * The text's proportions, measured once.
-     *
-     * The band is derived from the text, so the geometry cannot be built without this — and it does
-     * not depend on the vector being painted, so every icon file in a variant shares it.
-     */
+    /** Measured once: the band derives from the text, and this does not vary by icon file. */
     private val textWidthPerCapHeight: Double? by lazy { text.naturalWidthPerCapHeight(style.text) }
 
     private fun ribbonFor(root: Element, describedAs: String): Ribbon {
@@ -147,6 +152,7 @@ internal class BannerPainter(
             viewportWidth = width,
             viewportHeight = height,
             corner = style.corner,
+            positionPercent = style.positionPercent,
             maxTextSizePercent = style.maxTextSizePercent,
             lineHeight = style.lineHeight,
             textWidthPerCapHeight = textWidthPerCapHeight,
@@ -164,28 +170,18 @@ internal class BannerPainter(
 
     internal companion object {
         /**
-         * Monochrome layers are tinted by the system and only their alpha survives, so the literal
-         * colour is irrelevant as long as it is fully opaque.
+         * The system tints this layer, replacing the RGB and keeping the alpha, so white is
+         * arbitrary and the alpha is the whole of what a banner can choose here.
          */
-        const val MONOCHROME_FILL: String = "#FFFFFFFF"
+        fun monochromeFill(alphaPercent: Double): String =
+            String.format(Locale.ROOT, "#%02XFFFFFF", Math.round(alphaPercent / 100.0 * 255))
 
-        /**
-         * On-screen dp the shorter viewport edge covers, so a fitted size in viewport units can be
-         * judged at the size a user actually sees.
-         *
-         * A launcher scales an adaptive icon so its 72dp mask fills the icon slot, and that slot is
-         * 48dp on a stock launcher. The full 108dp canvas therefore lands at `108 * 48/72 = 72`dp.
-         */
+        /** On-screen dp of the shorter viewport edge: a launcher fits the 72dp mask into a 48dp slot. */
         const val LAUNCHER_DP_PER_EDGE: Double = 72.0
 
         /**
-         * Cap height below which the fitted text is not worth calling text, in on-screen dp.
-         *
-         * 4dp is about 12 physical pixels at xxhdpi and 8 at xhdpi — the floor at which uppercase
-         * glyphs are still distinguishable from a smear. It is deliberately well under anything
-         * anyone would choose on purpose: with the default style in Roboto Mono 700 it clears
-         * `DEBUG` (7.3dp) and `STAGING` (5.4dp) and catches `STAGING RC1` (3.6dp), which is the case
-         * that prompted it.
+         * Well under anything chosen on purpose: at the default style it clears `STAGING` (5.4dp) and
+         * catches `STAGING RC1` (3.6dp).
          */
         const val MIN_LEGIBLE_CAP_HEIGHT_DP: Double = 4.0
     }

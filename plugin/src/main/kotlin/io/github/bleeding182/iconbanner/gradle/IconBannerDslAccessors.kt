@@ -1,18 +1,5 @@
-// Deliberately not this plugin's own package.
-//
-// Kotlin build scripts implicitly star-import `org.gradle.kotlin.dsl.*` — that is how `configure`,
-// `named` and friends work without an import line. Declaring these accessors here makes them
-// available in every `.gradle.kts` with no import at all.
-//
-// The import is not cosmetic. Gradle generates a type-safe accessor for the project-level block on
-// `ApplicationExtension`, but none for container elements. Without a candidate on the inner
-// receiver, an `iconBanner { }` written inside `productFlavors { dev { } }` still *compiles* — it
-// binds to the enclosing `android { }` receiver and silently configures the project-wide defaults,
-// so every variant gets a banner. That reads as a plugin bug, not as a missing import.
-//
-// Kotlin resolves the innermost receiver first, so once these exist the flavor-level call wins.
-//
-// Groovy scripts need none of this; `ExtensionAware` answers `iconBanner` dynamically.
+// Deliberately not this plugin's package: Kotlin build scripts star-import org.gradle.kotlin.dsl.*,
+// so `dev { iconBanner { … } }` resolves with no import. Moving this file breaks every build script.
 package org.gradle.kotlin.dsl
 
 import com.android.build.api.dsl.BuildType

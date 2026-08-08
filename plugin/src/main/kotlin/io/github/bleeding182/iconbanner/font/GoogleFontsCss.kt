@@ -10,16 +10,7 @@ internal data class FontFace(
     val ttfUrl: String?,
 )
 
-/**
- * Parses the CSS the Google Fonts `css2` endpoint returns to an unrecognised user agent.
- *
- * Such an agent gets TrueType rather than woff2, and — verified against the live endpoint — a single
- * unsubsetted `@font-face` block. Subsetted responses (several blocks with `unicode-range`) are
- * still handled, because nothing in the contract promises they cannot happen.
- *
- * The URL this hands back is *not* trusted: it comes out of a response body, and
- * [GoogleFontProvider] checks its origin before fetching it.
- */
+/** Parses the CSS `css2` returns to an unrecognised user agent, which is TrueType, not woff2. */
 internal object GoogleFontsCss {
 
     private val FONT_FACE = Regex("""@font-face\s*\{([^}]*)}""", RegexOption.IGNORE_CASE)
@@ -45,12 +36,8 @@ internal object GoogleFontsCss {
             ?.trim()
 
     /**
-     * Picks the face that actually answers [spec].
-     *
-     * The weight is verified rather than trusted. Asking a variable family for a weight that is not
-     * one of its named instances returns HTTP 200 with the neighbouring instances instead — silently
-     * accepting the first would ship a banner in the wrong weight, which is exactly the "substituted
-     * a different face" failure the design rules out.
+     * The face that actually answers [spec]. The weight is verified rather than trusted: a variable
+     * family answers any weight in its range, and a static one silently substitutes.
      */
     fun selectTtfUrl(css: String, spec: FontSpec, requestUrl: String): String {
         val faces = parse(css).filter { !it.ttfUrl.isNullOrBlank() }
@@ -73,8 +60,7 @@ internal object GoogleFontsCss {
             )
         }
 
-        // An unsubsetted face covers every glyph; prefer it. Otherwise take the last subset, which is
-        // the order the endpoint uses to put latin last.
+        // An unsubsetted face covers every glyph; otherwise take the last subset, which is latin.
         val chosen = matching.firstOrNull { it.unicodeRange == null } ?: matching.last()
         return chosen.ttfUrl!!
     }
@@ -100,13 +86,7 @@ internal object GoogleFontsCss {
 internal fun FontSpec.describe(): String =
     "'$family' weight $weight" + if (italic) " italic" else ""
 
-/**
- * Condenses a response body for an error message.
- *
- * The CSS endpoint answers an unavailable family or weight with a full HTML error page: ten
- * kilobytes of inlined script wrapped around one useful sentence. Pasting that verbatim into a build
- * failure buries the cause, so scripts, styles and tags are stripped first.
- */
+/** Condenses a response body for an error message — an unavailable family gets a full HTML page. */
 internal fun summarizeBody(body: String, limit: Int = 400): String {
     val text = if (body.contains("<html", ignoreCase = true) || body.contains("<!DOCTYPE", ignoreCase = true)) {
         body

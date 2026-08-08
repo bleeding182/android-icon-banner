@@ -8,8 +8,8 @@ import org.gradle.api.Project
 /**
  * Adds a per-variant banner to the launcher icon.
  *
- * Application modules only. In a library or dynamic-feature module the plugin does nothing at all,
- * so applying it from a convention plugin across every module is safe.
+ * Application modules only; does nothing elsewhere, so a convention plugin may apply it
+ * everywhere.
  */
 abstract class IconBannerPlugin : Plugin<Project> {
     override fun apply(target: Project) {

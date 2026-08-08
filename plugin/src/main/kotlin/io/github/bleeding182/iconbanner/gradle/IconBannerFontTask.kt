@@ -4,32 +4,43 @@ import io.github.bleeding182.iconbanner.IconBannerComponents
 import io.github.bleeding182.iconbanner.api.FontSpec
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.Nested
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import javax.inject.Inject
+
+/** One face to fetch. Public for the same mechanical reason as [BannerInput]. */
+interface FontInput {
+
+    @get:Input
+    val family: Property<String>
+
+    @get:Input
+    val weight: Property<Int>
+
+    @get:Input
+    val italic: Property<Boolean>
+}
 
 /**
- * Produces the TrueType file the generator traces glyph outlines from.
- *
- * The inputs are only the font identity, so an incremental build is up to date and makes no network
- * call at all — the point of having this as a separate task rather than fetching inside the
- * generate task.
+ * Produces the TrueType files the generator traces outlines from. The inputs are font identities
+ * only, so an incremental build is up to date without touching the network.
  */
 @CacheableTask
 abstract class IconBannerFontTask : DefaultTask() {
 
-    @get:Input
-    abstract val family: Property<String>
-
-    @get:Input
-    abstract val weight: Property<Int>
-
-    @get:Input
-    abstract val italic: Property<Boolean>
+    /**
+     * Every face the variant's banners ask for, duplicates included — each entry is a triple of lazy
+     * providers, and deduplicating would force them during configuration.
+     */
+    @get:Nested
+    abstract val fonts: ListProperty<FontInput>
 
     /** Shared across projects under the Gradle user home, so the fetch is paid for once per machine. */
     @get:Internal
@@ -39,15 +50,26 @@ abstract class IconBannerFontTask : DefaultTask() {
     @get:Internal
     abstract val offline: Property<Boolean>
 
-    @get:OutputFile
-    abstract val fontFile: RegularFileProperty
+    /** One file per distinct face, named by [fontFileName] so the generate task can find each one. */
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    protected abstract val fileSystem: FileSystemOperations
 
     @TaskAction
     fun download() {
         val provider = IconBannerComponents.fontProvider(cacheDirectory.get().asFile, offline.get())
-        val resolved = provider.resolve(FontSpec(family.get(), weight.get(), italic.get()))
-        val target = fontFile.get().asFile
-        target.parentFile?.mkdirs()
-        resolved.copyTo(target, overwrite = true)
+        val output = outputDirectory.get().asFile
+        // Cleared first, or a face dropped from the DSL lingers and keeps being served.
+        fileSystem.delete { delete(output) }
+        output.mkdirs()
+
+        val specs = fonts.get()
+            .map { FontSpec(it.family.get(), it.weight.get(), it.italic.get()) }
+            .distinct()
+        for (spec in specs) {
+            provider.resolve(spec).copyTo(output.resolve(fontFileName(spec)), overwrite = true)
+        }
     }
 }

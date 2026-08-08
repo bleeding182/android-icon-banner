@@ -2,7 +2,7 @@
 
 A Gradle plugin that stamps a corner ribbon onto your Android launcher icon, per build variant.
 
-![Production icon, dev icon as a launcher shows it, and the full adaptive foreground](docs/preview.png)
+![Production icon, bannered icon as a launcher shows it, and the full adaptive foreground](docs/preview.png)
 
 Install a dev build and a production build on the same device and you cannot tell them apart in the
 launcher, in recents, or in app info. Mark the variants you choose; the rest stay untouched.
@@ -14,8 +14,10 @@ plugins {
 }
 
 android {
-    buildTypes {
-        debug { iconBanner { text = "DEV" } }   // release stays untouched
+    flavorDimensions += "environment"
+    productFlavors {
+        create("staging") { dimension = "environment"; iconBanner { text = "STAGING" } }
+        create("prod") { dimension = "environment" }   // production stays untouched
     }
 }
 ```
@@ -24,10 +26,11 @@ That is the whole setup. The plugin is on the Gradle Plugin Portal, which every 
 resolves from, so there is no repository to add — and no imports, no icon assets to maintain. A
 variant is bannered only if `text` resolves for it.
 
-<img src="docs/preview-monochrome.gif" alt="A themed icon cycling through three system tints, the banner text staying a cutout" width="144" align="right">
+<img src="docs/preview-monochrome.webp" alt="A themed icon cycling through three system tints, the banner text staying a cutout" width="144" align="right">
 
 Themed (monochrome) icons work too: the band is clipped out of the icon and the text punched through
-it as a real cutout, so it stays legible under any tint the system picks.
+it as a real cutout, so it stays legible under any tint the system picks. That tint is the same for
+the whole icon, so `monochromeAlpha` is what tells two banners apart there.
 
 Requires **AGP 9.3+, Gradle 9+ and JDK 17+**, and a vector launcher icon. Applying it to a library or
 dynamic-feature module does nothing, so a convention plugin can apply it everywhere.
@@ -52,7 +55,7 @@ android {
 
     flavorDimensions += "environment"
     productFlavors {
-        create("dev") { dimension = "environment"; iconBanner { text = "DEV" } }
+        create("staging") { dimension = "environment"; iconBanner { text = "STAGING" } }
         create("prod") { dimension = "environment" }
     }
 }
@@ -63,7 +66,10 @@ android {
 | `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
 | `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` reference. Not `?attr/…` — a launcher inflates the icon without a theme. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
-| `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
+| `monochromeAlpha` | `Int` | `100` | How opaque the band is in the themed icon, where the system picks the colour and `color` does not apply. Lower is a lighter shade of the same tint. `0..100`. |
+| `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. Two banners overlap unless they sit in *opposite* corners — adjacent ones cross near the middle of the icon. |
+| `position` | `Int` | `65` | How far out the ribbon sits: `0` the centre of the icon, `100` the point at which no text fits. Higher is a smaller, tighter tab. `20..95`, and see below. |
+| `z` | `Int` | `0` | Paint order where banners overlap: higher goes on top, ties in the order they were declared. |
 | `maxTextSize` | `Int` | `13` | Largest the text may be: its cap height as a percentage of the icon's shorter edge. An upper bound — text too long to fit across the ribbon is drawn smaller. `1..21`, past which a launcher's mask would cut into the glyphs. |
 | `lineHeight` | `Double` | `1.5` | Band thickness as a multiple of the text's cap height, measured across the band. The band is sized from the text, so this is what makes the ribbon chunkier or tighter; it never changes the text's size or position. `1.0..3.0`. |
 | `font` | `String` | `Roboto Mono` | Any Google Fonts family, downloaded on first use and cached. |
@@ -79,6 +85,74 @@ on a phone. The build warns when the text drops below a readable size; raising `
 not help in that case, because the length, not the setting, is what ran out. Latin, left-to-right
 text only.
 
+### Sizing the ribbon with `position`
+
+The band spans the whole corner, not just its text, so `position` is what decides how big the ribbon
+reads. Push a short marker out and it becomes a tight little tab; pull a long one in and it becomes a
+broad stripe with room for the text.
+
+It is not free. The text is fitted against the chord across the icon's safe zone, and that chord is
+`2r · √(1 − position²)` — flat near the centre, collapsing near the rim:
+
+| `position` | ribbon length | `1A2B3` | `STAGING` |
+|---|---|---|---|
+| 50 | 64 | 8.1dp | 4.9dp |
+| **65** (default) | **58** | **7.1dp** | **4.3dp** |
+| 75 | 51 | 6.2dp | 3.7dp ⚠ |
+| 85 | 42 | 4.9dp | 3.0dp ⚠ |
+| 90 | 36 | 4.1dp | 2.5dp ⚠ |
+
+Lengths are on the 108-unit canvas; the dp figures are cap heights on a stock 48dp launcher slot,
+against a 4dp legibility floor.
+
+So this is fine-tuning, not layout. Going out costs text size quickly and coming in buys very little,
+and how much room you have depends entirely on how short the text is: five characters reach about 90
+before they stop being readable, while anything the length of `STAGING` is near the floor at the
+default and has nowhere to go. Text that no longer fits is drawn smaller, with the usual warning —
+which names `position` when that is what ran out.
+
+Below 40 the band's inner edge crosses the middle of the artwork, and the ribbon stops reading as a
+corner ribbon at all. The range stops at `20..95` because outside it nothing works at any text length.
+
+### Several banners
+
+`banner("name") { … }` declares another banner in the same block. Properties written directly in
+`iconBanner { }` are defaults for every banner in scope; each banner overrides what it cares about.
+
+```kotlin
+android {
+    iconBanner {
+        corner = bottomRight              // where the main banner sits
+        banner("api") {
+            corner = topLeft              // the opposite corner, so the two cannot overlap
+            color = "#333333"
+            monochromeAlpha = 80          // and a lighter shade in the themed icon, which has no colours
+            text = "MOCK"
+        }
+    }
+
+    productFlavors {
+        create("staging") {
+            iconBanner {
+                text = "STAGING"                       // the main banner's text
+                banner("api") { color = "#0055FF" }    // refines the one declared above
+            }
+        }
+        create("prod") {
+            iconBanner { banner("api").remove() }      // production keeps its clean icon
+        }
+    }
+}
+```
+
+The block's own properties are a banner too, named `main` — the one a build script that has never
+heard of `banner()` has been configuring all along. The name is reserved for it.
+
+`text` is the one property that does not fall through from the block to the named banners: a
+block-level `text` belongs to `main`, so `banner("api")` draws nothing until something gives it text
+of its own. A banner nobody ever gives text to is silently no banner, which is what lets you declare
+its style at project level and its text on one flavor. `remove()` is sugar for `text = null`.
+
 ### Precedence
 
 Build type beats product flavor beats the project-level block — the same rule AGP uses for
@@ -86,10 +160,10 @@ everything else. A `null` only clears the value if nothing higher up assigns one
 
 ```kotlin
 android {
-    iconBanner { text = "PREVIEW" }                  // every variant, unless overridden
+    iconBanner { text = "PREVIEW" }                      // every variant, unless overridden
     productFlavors {
-        create("dev") { iconBanner { text = "DEV" } }
-        create("prod") { iconBanner { text = null } } // no banner — unless a build type sets one
+        create("staging") { iconBanner { text = "STAGING" } }
+        create("prod") { iconBanner { text = null } }     // no banner — unless a build type sets one
     }
     buildTypes {
         named("debug") { iconBanner { text = "DEBUG" } }   // wins over both, prodDebug included
@@ -97,23 +171,39 @@ android {
 }
 ```
 
+That chain runs once per banner, and each banner resolves against two tiers of it: its own
+`banner("api") { … }` declarations first, then the block-level properties behind them. `text` is the
+exception — the block's `text` is the main banner's and never falls through, or every named banner
+would repeat it.
+
 ### Build metadata in the banner
 
-`text` accepts a `Provider<String>`, so the banner can carry something the build computes:
+`text` accepts a `Provider<String>`, so a banner can carry something the build computes — which is
+what a second banner is for. The environment goes in one corner, the commit in the other:
 
 ```kotlin
 val gitSha = providers.exec { commandLine("git", "rev-parse", "--short=5", "HEAD") }
     .standardOutput.asText.map { it.trim() }
 
 android {
-    buildTypes {
-        debug { iconBanner { text = gitSha } }
+    iconBanner {
+        corner = bottomRight
+        banner("sha") {
+            corner = topLeft
+            position = 85       // short enough to push out, so it reads as a small tab
+            text = gitSha
+        }
+    }
+    productFlavors {
+        create("staging") { iconBanner { text = "STAGING" } }
+        create("prod") { iconBanner { banner("sha").remove() } }
     }
 }
 ```
 
-Assigning a provider enables the banner even before its value is known. Note the short SHA — prefixing
-it with `"DEV "` would push the text past what stays readable at icon size.
+Assigning a provider enables the banner even before its value is known. Note the short SHA, and note
+that it is a banner of its own: one banner reading `"STAGING 1a2b3"` would be past what stays
+readable at icon size.
 
 The value is read when the icon is generated rather than when the build is configured, with one
 caveat: under the configuration cache a provider is finalized as the entry is stored, so on builds

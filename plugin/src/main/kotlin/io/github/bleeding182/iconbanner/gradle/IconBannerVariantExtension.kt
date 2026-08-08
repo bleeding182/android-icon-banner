@@ -4,7 +4,6 @@ import com.android.build.api.variant.VariantExtension
 
 /**
  * Carries the merged configuration from AGP's extension-creation callback — the only place the
- * build type and product flavor blocks are reachable — over to `onVariants`, where the tasks are
- * wired. [banner] is `null` for a variant that gets no banner.
+ * build type and flavor blocks are reachable — over to `onVariants`.
  */
-internal class IconBannerVariantExtension(val banner: ResolvedBanner?) : VariantExtension
+internal class IconBannerVariantExtension(val banners: List<ResolvedBanner>) : VariantExtension

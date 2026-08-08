@@ -87,7 +87,9 @@ plugin instead clips the icon content and punches the text out of the ribbon as 
 18. As an Android developer, I want the themed/monochrome icon to also carry the banner, so that
     users with themed icons enabled can still tell my builds apart.
 19. As an Android developer, I want the monochrome banner to remain legible, so that it does not
-    collapse into a solid tinted wedge the way a naive overlay would.
+    collapse into a solid tinted wedge the way a naive overlay would — and, with two banners, to
+    shade one of them, so that they stay distinguishable where the system gives everything one
+    colour.
 20. As an Android developer whose icon has no monochrome layer, I want the plugin to simply skip it,
     so that I am not forced to add one.
 
@@ -180,8 +182,27 @@ content and works regardless of any groups, transforms or clip-paths the origina
 
 **Monochrome.** All existing root children are wrapped in a single `<group>` carrying an
 inverse-ribbon `<clip-path>`, so icon content cannot bleed into the ribbon area. The ribbon and text
-are emitted as one combined path with `android:fillType="evenOdd"` and a fixed white fill, making
-the glyphs transparent holes. This mirrors the approach already proven in the browser generator.
+are emitted as one combined path with `android:fillType="evenOdd"` and a white fill, making the
+glyphs transparent holes. This mirrors the approach already proven in the browser generator.
+
+#### Superseded: the white fill's alpha became `monochromeAlpha`
+
+The fill was fixed at `#FFFFFFFF` on the reasoning that the system replaces the RGB with its tint
+and keeps the alpha, so nothing about the colour was worth exposing. That reasoning stops one step
+short: the alpha *is* kept, and it is therefore the only appearance a themed banner can choose. With
+one banner it hardly matters; with two it is the difference between telling them apart and not, since
+`color` — the thing that separates them everywhere else — has no effect on this layer at all.
+
+So `monochromeAlpha` is a percentage, 0..100, default 100, and the generator turns it into the fill's
+alpha byte. Deliberately not a colour: accepting `#CCFFFFFF` here would invite setting an RGB that
+the system then throws away, and a value that is silently ignored is worse than one that does not
+exist. The name matches the `<monochrome>` tag the value acts on rather than the "themed icon" the
+user sees, because that is what the docs have to explain either way.
+
+The whole 0..100 range is allowed, including 0 — a band cut out of the icon and not filled back in is
+a coherent look, not a mistake, and it is the only value that needs an explanation. Adding it made
+`BannerGeometryBounds` the wrong name for the object that checks the numeric knobs, since alpha is
+not geometry; it is now `BannerBounds`.
 
 Where `<foreground>` and `<monochrome>` reference the same drawable — the default Android Studio
 template does exactly this — one name cannot hold two different outputs. The monochrome result is
@@ -271,6 +292,125 @@ property merged by `orElse` chaining; none of them ever needs early evaluation.
 `weight: Int` and `italic: Boolean` are used in place of a `bold` boolean. AWT will not synthesize a
 convincing bold from a regular face, but the font service will serve the genuine weight, so the
 weight axis is passed through to the request instead.
+
+#### Extended: named banners
+
+One banner per variant was never argued for; it was simply all there was. The case that breaks it is
+two markers of *different* kinds — the environment in one corner and a git SHA in the other, stories
+1 and 22 wanted at the same time. Concatenating them into one `text` does not work: the ribbon's
+length is fixed by the mask, so `"STAGING 1a2b3"` is drawn below the legibility floor.
+
+`banner("sha") { … }` declares one, inside the same `iconBanner { }` block, in all three slots. The
+container is a `NamedDomainObjectContainer<IconBannerSpec>` and `banner` is `maybeCreate` rather than
+`create`: re-declaring a name in a higher-precedence block is the *point* — it is how a flavor refines
+what the project block declared — not a collision to report.
+
+**Two tiers.** A property written directly in `iconBanner { }` is a default for every banner in that
+block's scope; the same property on a named banner overrides it. Each banner therefore resolves
+against its own declarations down the precedence chain first, then the block-level ones behind them.
+The build-type/flavor/project order is unchanged at both tiers, so this adds one rule rather than a
+second scoping mechanism.
+
+**`text` is the exception, and does not fall through.** The block's own properties are not only
+defaults; they are also a banner — the one named `main`, which is bit for bit the banner the plugin
+had before this change, so every existing build script keeps its meaning. A block-level `text` is
+`main`'s marker. Letting it fall through would hand `banner("sha")` the same word under a second name
+and stamp it on the icon twice, which is never what was meant. `main` is reserved: `banner("main")`
+fails, pointing at the block's own properties.
+
+A named banner nobody ever gives text to is silently no banner. Deliberate rather than tolerated:
+declaring a banner's style at project level and its text on one flavor alone is the normal shape, and
+it is what keeps an unbannered flavor unbannered.
+
+**Removal is `text = null`.** `banner("sha").remove()` is sugar for exactly that and nothing more. A
+flavor cannot literally remove an element from the project block's container, because AGP gives every
+DSL slot its own extension instance and therefore its own container: the flavor's container never held
+that banner and has nothing to take out of it. Refusing to inherit the text is already the mechanism
+that decides whether a banner exists at all, so it is the mechanism removal uses.
+
+The assignment-state table above still holds, once per banner.
+
+**Declaration order is recorded, not read back off the container.** A `NamedDomainObjectContainer`
+iterates alphabetically and nothing about the DSL implies that order, so each block keeps the order
+names were written in. The chain is walked lowest-precedence first, so a banner the project block
+introduced sits behind one a flavor added on top of it — the order a reader of the build script would
+expect from the way overrides work everywhere else. `main` is pinned first: it is declared nowhere and
+exists in every block, so there is no position to observe.
+
+Task names are unchanged — one `download<Variant>IconBannerFont` and one `generate<Variant>IconBanner`
+per variant, however many banners it carries. Both tasks read and rewrite the same icon resources, so
+splitting them per banner would put several tasks in one generated resource directory. The font task
+now emits a *directory* with one file per distinct face, deduped on the resolved values at execution
+time rather than during configuration, where comparing lazy providers would mean forcing them.
+
+#### Overlap and `z`
+
+`z: Property<Int>`, default 0. Higher is painted later and ends up on top; ties break by declaration
+order.
+
+Overlap is the normal case rather than the pathological one, and the geometry is what says so. With
+the centre line pinned at `0.72 * s`, a TOP_LEFT band at the default style covers
+`x + y ∈ [0.58s, 0.86s]` and a TOP_RIGHT one covers `(s − x) + y` over the same range. Their centre
+lines cross at `(0.5s, 0.22s)` whatever the thickness, and that point is `0.28s` from the icon's
+centre against a mask at `0.33s` — so the overlap is drawn rather than masked away. **Only opposite
+corners are disjoint**: TOP_LEFT with BOTTOM_RIGHT, TOP_RIGHT with BOTTOM_LEFT. Adjacent corners
+cross, and the same corner obviously does.
+
+Two banners in one corner **warn**; they do not fail. `z` exists precisely so the user can say which
+of two overlapping banners is the readable one, and a marker stacked over a coloured band is a
+legitimate thing to want — failing would take that away. It is still worth saying out loud, because
+the usual cause is a flavor adding a banner without noticing the project block already put one there,
+and the result is one marker quietly buried. Adjacent corners are deliberately not warned about: two
+different corners are a layout somebody chose, two banners in one corner are a layout nobody chose.
+
+Sorting by `z` happens in the generate task, at execution time, because `z` is a lazy property like
+every other. A plain stable sort over the declaration-ordered list is the whole implementation —
+`sortedBy` leaves equal elements where they were, so declaration order *is* the tie-break without an
+index having to say so.
+
+#### Rejected: keying banners by corner
+
+`iconBanner { topLeft { … } }`, at most four per icon. It reads well and makes two banners in one
+corner unrepresentable rather than merely warned about.
+
+Rejected because it spends `corner`. A banner's corner would be its identity, so `corner` could no
+longer be a per-variant overridable property, and moving the SHA out of the way on one flavor would
+mean declaring a *different* banner there instead of overriding one line. Overlap is worth a warning;
+it is not worth losing an override to prevent.
+
+#### Rejected: a project-level container with AGP variant selectors
+
+Declare every banner once in `android { iconBanner { } }` and attach each to variants through
+something like `components.selector()`.
+
+Rejected for the reason the merge follows AGP's precedence in the first place: it abandons the
+build-type/flavor inheritance model the rest of the block already uses, and it introduces a second
+scoping mechanism — for banners specifically — that a user would have to learn *alongside* AGP's own
+and keep straight from it.
+
+#### Known follow-up: edge banners
+
+Half done. The offset half shipped as `position` — see "the fixed centre line became `position`"
+below for the scale and for why it is anchored where it is. Banners are still pinned to the four
+corners; the remaining extension is edge positions (top, bottom, left, right).
+
+That half is cheap now, and deliberately so: `position` is a distance from the icon's centre, which
+is the one measurement a corner and an edge share, so an edge banner is a new entry in the corner
+table and a rotation, not a second sizing model. `Ribbon.perpendicularFromIconCentre` and the quad
+tables are the only places that know a corner from an edge.
+
+One thing to decide when it happens, and it is less obvious than the four sides sound. At the default
+position an edge band lands 27.7–37.5 on a 108 canvas against a visible mask of 18–90 — a belt across
+the upper third rather than a strip hugging the top. Hugging the rim is not available: the text budget
+is zero past `0.306 * s` from the centre and the edge itself is at `0.5 * s`. So edge banners either
+read differently from corner ones or they want a different default, which is a choice about what an
+edge banner *is* rather than about geometry.
+
+This note used to date the shared-corner warning, on the reasoning that two banners in one corner at
+different offsets would no longer overlap. That turned out to be wrong and the warning is unchanged:
+both bands run parallel to the same diagonal, so they separate only once the gap between their centre
+lines exceeds half of each band's thickness. That is a stacking arrangement, which is not a thing this
+plugin sets out to support.
 
 ### Font acquisition
 
@@ -391,7 +531,8 @@ icon's centre and the corner-side edge `0.295 * s` — not `0.129` and `0.267` �
 `0.306 * s`. At 0.80 the inner edge is `0.044 * s`, not `0.073`. The band is thicker than that
 paragraph thought, so it reaches closer to the rim on one side and closer to the centre on the other;
 the conclusion it was drawn for survives, because at the default the corner-side edge is still inside
-the safe zone and the centre of the artwork is still uncovered. `Ribbon.CENTRE_LINE_FRACTION` carries
+the safe zone and the centre of the artwork is still uncovered. `Ribbon.DEFAULT_POSITION_PERCENT`
+(where this constant ended up, restated on the `position` scale as 65) carries
 the corrected figures.
 
 The fix is naming, not a correction factor sprinkled at the call site. Axis-measured lengths carry an
@@ -441,6 +582,64 @@ is also where it stops looking crowded and has not yet started looking heavy. Th
 from `lineHeight = 2.2` to 1.8, and not because 2.2 was equivalent to it: 2.2 drew a 10.1 band under
 the old arithmetic and asks for 14.3 under the fixed one, so keeping it would have made the preview
 heavier than anything the defaults produce. 1.8 asks for the 11.7 the demo wants.
+
+#### Superseded again: the fixed centre line became `position`
+
+The pinned line was the right call and the wrong permanence. What it settles — text room against how
+much of the icon the band covers — is a judgement about *this* banner's text, and a plugin that lets
+one icon carry several of them has no single right answer to it. A five-character sha wants a small
+tab in the corner; `STAGING` wants the broad stripe the default gives it. So the line stayed
+independent of the band's thickness, which is the property everything rests on, and stopped being a
+constant.
+
+**The scale is anchored on the safe-zone radius**, not on the canvas: `position` is `d / safeRadius`
+as a percentage, where `d` is the perpendicular distance from the icon's centre to the centre line. 0
+is the icon's centre, 100 the distance at which the text budget is exactly zero. Three things follow,
+and the third is why this anchor beat the alternatives. The endpoint is real rather than a convention.
+The whole model collapses to `budget = 2r · √(1 − position²)`. And because it is a distance from the
+centre rather than an inset from an edge, one value means the same text room at a corner as on an
+edge — which the planned top/bottom/left/right banners need, since a corner is `√2` further from the
+centre than an edge is and any canvas-anchored spelling would have meant two different things there.
+
+Anchoring at the mask cutoff would have put today's value at 59 and at the literal canvas corner at
+28; the safe radius puts it at **65**, and `DEFAULT_POSITION_PERCENT = 65` is the old `0.72` restated,
+to within 0.1 units on a 108 canvas. Every golden file moved by that 0.1 and nothing else — the
+diffs are the ribbon quad and the glyph outlines shifted together, with sizes unchanged.
+
+Three spellings were considered and two rejected:
+
+- **A signed `offset` from the default**, in percent of the shorter edge. Reads the way the knob is
+  described in use — "push it out a bit" — but it needs a sign convention, hides the default, and
+  makes the range look arbitrary. `20..95` reads as a scale; `−8..+8` reads as a fudge factor.
+- **An offset in band thicknesses**, so that `offset = 1` lands flush against a neighbour. Rejected
+  outright: position would derive from thickness, which derives from the fitted text size, which
+  derives from the length budget, which derives from position. That is exactly the spiral the pinned
+  line was introduced to break, three subsections above, and solving it for `"STAGING"` gave a 4.45
+  cap height against 6.5 pinned. It also only serves stacking two banners on one edge, which this
+  plugin does not set out to support.
+- **Auto-fitting** the position to the text — solve for where the text just reaches `maxTextSize`.
+  Closed form, no loop, and still wrong: 13% cap height needs a chord only about three characters ever
+  reach, so every banner would clamp to the innermost bound and come out a stripe through the middle.
+  For genuinely short text both directions are defensible and the plugin cannot infer which was meant.
+
+**The trade is asymmetric, and the docs say so.** Going out costs text size quickly — a third of the
+ribbon's length by 85 — while coming in buys very little, because the chord is flat near the centre.
+Below about 40 the band's inner edge crosses the middle of the artwork. So this is fine-tuning, and
+how much of it is available depends entirely on the text: five characters reach about 90 before the
+4dp floor, `STAGING` is already at 4.3dp at the default and has nowhere to go. `MIN_POSITION` is 20
+on taste and to catch a scale used upside down; `MAX_POSITION` is 95 on geometry, since the budget
+reaches zero at 100.
+
+Two knock-on decisions. The legibility warning now names `position` as the cause, but **only when the
+banner was pushed past the default** — suggesting it to someone on 65 would send them towards a
+setting that buys a few percent and costs them the centre of their icon. And `maxTextSize` keeps its
+static `1..21` ceiling even though the limit it approximates now moves: the true bound is
+`2 * (safeRadius − d)`, which falls to 6% at position 90, so validating against it would make the
+documented default of 13 illegal past about 78 and turn one knob into a two-knob ritual. `Ribbon`
+clamps the fitted size to that bound instead — a third term beside "as asked for" and "as long as it
+fits" — which is the same shrink-rather-than-fail behaviour over-long text has always had. 21 is
+exactly the value at position 65, so nothing a build script could previously ask for is clamped, and
+a build that never touches `position` sees none of this.
 
 ### Failure policy
 
@@ -594,8 +793,8 @@ exercised with a local file, which is the only fake the suite needs.
   below API 26 show the unmodified icon. Explicitly shelved, and the reason the raster skip is
   silent rather than a warning.
 - **Standalone banners.** Banners on drawables other than the launcher icon.
-- **Multiple banners** on one icon.
-- **Manual banner placement** — arbitrary position, rotation, or shapes other than the corner ribbon.
+- **Manual banner placement** — arbitrary coordinates, rotation, or shapes other than the corner
+  ribbon. `position` slides a banner along its own diagonal and is not a general placement knob.
 - **AGP 8 and Gradle 8 support.** Deliberately deferred; the design is not structured to make
   backporting free.
 - **A preview or report task.** The sample app is the visual check.

@@ -13,16 +13,14 @@ internal object ColorFormat {
 
     private val HEX = Regex("#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 
-    /** Returns [value] unchanged, or throws with a message naming [property] and [variantName]. */
-    fun check(value: String, property: String, variantName: String): String {
-        // `?colorPrimary` is as legal a theme reference as `?attr/colorPrimary`, and both are
-        // useless here, so the whole prefix goes — with its own message, since "not a colour" would
-        // be actively misleading for something Android does accept elsewhere.
+    /** Returns [value] unchanged, or throws naming [property], [bannerName] and [variantName]. */
+    fun check(value: String, property: String, variantName: String, bannerName: String): String {
+        // `?colorPrimary` and `?attr/colorPrimary` are both useless here, so the whole prefix goes.
         require(!value.startsWith("?")) {
-            "iconBanner.$property for variant '$variantName' is '$value'. A launcher inflates the " +
-                "launcher icon without a theme, so a theme attribute has nothing to resolve against " +
-                "and the icon would fail to load. Use a colour resource (@color/name) or a hex " +
-                "literal instead."
+            "iconBanner.$property for banner '$bannerName' in variant '$variantName' is '$value'. A " +
+                "launcher inflates the launcher icon without a theme, so a theme attribute has " +
+                "nothing to resolve against and the icon would fail to load. Use a colour resource " +
+                "(@color/name) or a hex literal instead."
         }
         val valid = when {
             value.startsWith("#") -> HEX.matches(value)
@@ -30,9 +28,9 @@ internal object ColorFormat {
             else -> false
         }
         require(valid) {
-            "iconBanner.$property for variant '$variantName' is '$value', which is not a colour. " +
-                "Use a hex literal (#RGB, #ARGB, #RRGGBB, #AARRGGBB) or a colour resource " +
-                "(@color/name)."
+            "iconBanner.$property for banner '$bannerName' in variant '$variantName' is '$value', " +
+                "which is not a colour. Use a hex literal (#RGB, #ARGB, #RRGGBB, #AARRGGBB) or a " +
+                "colour resource (@color/name)."
         }
         return value
     }

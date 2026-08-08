@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.Locale
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -65,27 +66,31 @@ abstract class BannerGeneratorTestCases {
     @Test
     fun `coloured and monochrome output for the same input`() {
         val files = adaptiveIcon(style()).files
-        assertMatchesGolden("shared_coloured_foreground.xml", files.getValue(FOREGROUND_PATH))
+        // The same golden as the plain vector: an adaptive icon's foreground *is* that vector.
+        assertMatchesGolden("corner_top_left.xml", files.getValue(FOREGROUND_PATH))
         assertMatchesGolden("shared_monochrome.xml", files.getValue(MONO_PATH))
     }
 
     @Test
-    fun `monochrome punches the text out of the ribbon`() {
-        val monochrome = adaptiveIcon(style()).files.getValue(MONO_PATH)
-        // One path element carrying both the ribbon and the glyphs, so even-odd can make holes.
-        assertTrue("android:fillType=\"evenOdd\"" in monochrome, monochrome)
-        assertEquals(1, Regex("android:fillType").findAll(monochrome).count())
-        assertTrue("<clip-path" in monochrome, monochrome)
-        // The tinted layer only keeps alpha, so the fill is a fixed opaque white.
-        assertTrue("android:fillColor=\"#FFFFFFFF\"" in monochrome, monochrome)
+    fun `monochromeAlpha becomes the punched fill's alpha, and nothing else`() {
+        val files = adaptiveIcon(style(monochromeAlphaPercent = 80.0)).files
+
+        assertTrue("android:fillColor=\"#CCFFFFFF\"" in files.getValue(MONO_PATH), files.toString())
+        // The coloured layer draws its own colours at their own alpha, so it is the default golden.
+        assertMatchesGolden("corner_top_left.xml", files.getValue(FOREGROUND_PATH))
+    }
+
+    @Test
+    fun `the alpha percentage spans the full byte`() {
+        assertEquals("#00FFFFFF", BannerPainter.monochromeFill(0.0))
+        assertEquals("#80FFFFFF", BannerPainter.monochromeFill(50.0))
+        assertEquals("#FFFFFFFF", BannerPainter.monochromeFill(100.0))
     }
 
     @Test
     fun `the monochrome clip is the complement of the band that was drawn`() {
-        // Both outputs size their band from the same text, but they derive their paths separately —
-        // the quad for the coloured layer, the inverse clip and the punched path for the monochrome
-        // one. If those ever disagree the punched region no longer matches the band, and the icon's
-        // own artwork bleeds into the ribbon or a strip of the ribbon goes missing.
+        // The coloured quad and the monochrome clip are derived separately; if they disagree the
+        // artwork bleeds into the ribbon.
         val files = adaptiveIcon(style(text = "STAGING")).files
         val coloured = files.getValue(FOREGROUND_PATH)
         val monochrome = files.getValue(MONO_PATH)
@@ -93,13 +98,12 @@ abstract class BannerGeneratorTestCases {
         // The punched path is the coloured layer's exact quad, with the glyphs appended as holes.
         assertTrue("android:pathData=\"${quadPathOf(coloured)} M " in monochrome, monochrome)
 
-        // And the clip is its complement: every coordinate in it is either the icon's own edge or
-        // one of the band's two edges, so the clip cannot cut into or fall short of the band.
+        // Every clip coordinate is the icon's edge or one of the band's.
         val clip = Regex("<clip-path android:pathData=\"([^\"]+)\"").find(monochrome)
             ?: error("No clip path in $monochrome")
         assertEquals(
             quadPointsOf(coloured).flatMap { listOf(it.first, it.second) }.toSortedSet(),
-            textPoints(clip.groupValues[1]).flatMap { listOf(it.first, it.second) }
+            pathPoints(clip.groupValues[1]).flatMap { listOf(it.first, it.second) }
                 .filter { it != 108.0 }
                 .toSortedSet(),
         )
@@ -108,8 +112,8 @@ abstract class BannerGeneratorTestCases {
     @Test
     fun `monochrome wrap leaves existing groups and clip paths intact`() {
         val resources = FakeResources()
-            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
-            .xml("drawable/ic_launcher_foreground.xml", input("foreground_groups.xml"))
+            .xml(ADAPTIVE_PATH, input("adaptive_shared_mono.xml"))
+            .xml(FOREGROUND_PATH, input("foreground_groups.xml"))
         val files = generate(request(resources, style())).success().files
         assertMatchesGolden("groups_monochrome.xml", files.getValue(MONO_PATH))
         assertMatchesGolden("groups_coloured.xml", files.getValue(FOREGROUND_PATH))
@@ -121,8 +125,7 @@ abstract class BannerGeneratorTestCases {
     fun `short text reaches maxTextSize and the band is sized to it`() {
         val output = plainVector(style(text = "QA"))
         assertMatchesGolden("text_short.xml", output)
-        // Two characters have length to spare, so the text is exactly as large as it was allowed to
-        // be and the band is exactly that times the line height.
+        // Two characters have length to spare, so the text reaches its full size.
         assertEquals(13.0 / 100.0 * 108.0 * 1.5, bandThicknessOf(output), 0.01)
     }
 
@@ -130,19 +133,15 @@ abstract class BannerGeneratorTestCases {
     fun `long text is scaled down and the band narrows with it`() {
         val output = plainVector(style(text = "STAGING RC1"))
         assertMatchesGolden("text_long.xml", output)
-        // The point of deriving the band from the text: eleven characters do not fit at the size
-        // asked for, so both the text and the band around it come out smaller.
+        // Eleven characters do not fit, so the text and the band both come out smaller.
         val full = 13.0 / 100.0 * 108.0 * 1.5
         assertTrue(bandThicknessOf(output) < full, "the band should have narrowed from $full")
     }
 
     @Test
     fun `lineHeight thickens the band without touching the text`() {
-        // The two knobs are meant to be independent: maxTextSize sizes the text, lineHeight only
-        // decides how much band is wrapped around it. Checked for both cases that exist — "DEV"
-        // reaches maxTextSize, "STAGING RC1" is cut down by the length budget — because a coupling
-        // between thickness and fit would show up in the second one. Byte equality, not a tolerance:
-        // the glyph outline must not differ at all.
+        // Checked for both cases that exist: "DEV" reaches maxTextSize, "STAGING RC1" is length-bound.
+        // Byte equality, because the outline must not differ at all.
         listOf("DEV", "STAGING RC1").forEach { text ->
             val tight = plainVector(style(text = text, lineHeight = 1.0))
             val loose = plainVector(style(text = text, lineHeight = 2.0))
@@ -158,18 +157,14 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `the text always stays inside the band`() {
-        // The golden files pin the exact outline but would not obviously flag text that has spilled
-        // over the ribbon edge. This checks the property the sizing exists to guarantee, for both
-        // the size-bound and the length-bound case, in every corner.
-        // Derived, not hardcoded: retuning the ribbon's position should not need this edited.
+        // A golden file would not obviously flag text spilling over the ribbon edge.
         BannerCorner.entries.forEach { corner ->
             listOf("QA", "DEV", "STAGING RC1").forEach { text ->
                 val output = plainVector(style(text = text, corner = corner))
-                // The band the generator actually drew, not one re-derived from the geometry: the
-                // question is whether the text landed inside that quad.
+                // The band the generator drew, not one re-derived: the question is where the text landed.
                 val edges = quadPointsOf(output).map { (x, y) -> across(corner, x, y) }
                 val band = edges.min()..edges.max()
-                textPoints(glyphPathOf(output)).forEach { (x, y) ->
+                pathPoints(glyphPathOf(output)).forEach { (x, y) ->
                     val across = across(corner, x, y)
                     assertTrue(
                         across in band,
@@ -182,9 +177,7 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `text squeezed past readability warns without failing`() {
-        // The fit has no floor: eleven characters in the length of three still "fit", at a cap
-        // height of about 5.4 of 108 — roughly 3.6dp on a launcher icon, which is a smear. Only the
-        // user can decide whether that text is worth the size, so this warns rather than fails.
+        // Eleven characters in the length of three still "fit", at 5.39 of 108 — about 3.6dp.
         val result = generate(
             request(
                 FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
@@ -197,11 +190,29 @@ abstract class BannerGeneratorTestCases {
         assertTrue("STAGING RC1" in warning, warning)
         assertTrue("11 characters" in warning, warning)
         // The size it landed at, and what that means on a device, both in the message.
-        assertTrue("5.4" in warning, warning)
+        assertTrue("5.39" in warning, warning)
         assertTrue("dp" in warning, warning)
-        // No knob is suggested: the length it ran out of is fixed geometry, so there is none.
+        // At the default, naming iconBanner.position would cost the middle of the icon.
         assertTrue("shorter text" in warning, warning)
+        assertTrue("position" !in warning, warning)
         assertTrue(result.files.isNotEmpty(), "the banner should still have been generated")
+    }
+
+    @Test
+    fun `a banner pushed out is told that position is what ran out`() {
+        // "Use shorter text" is misleading for someone who shortened it and then moved the band.
+        val result = generate(
+            request(
+                FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
+                style(text = "STAGING", positionPercent = 90.0),
+                icon = DRAWABLE_ICON,
+            )
+        ).success()
+
+        val warning = result.warnings.single()
+        assertTrue("iconBanner.position (90" in warning, warning)
+        assertTrue("default of 65" in warning, warning)
+        assertTrue("pull the position back in" in warning, warning)
     }
 
     @Test
@@ -220,8 +231,7 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `one illegible text warns once, not once per icon file`() {
-        // An adaptive icon fits the same text three times over: foreground, monochrome, and each
-        // qualifier variant. Three identical warnings would read as three separate problems.
+        // The same text is fitted per layer and per qualifier; one complaint is enough.
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
             .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
@@ -233,7 +243,12 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `text is rendered verbatim rather than uppercased`() {
-        assertMatchesGolden("text_mixed_case.xml", plainVector(style(text = "dev")))
+        // Not a golden: "dev" and "DEV" are both a wall of Bézier coordinates, so the file could not
+        // show a reviewer which one was drawn. That the two differ at all is the whole property.
+        assertNotEquals(
+            glyphPathOf(plainVector(style(text = "DEV"))),
+            glyphPathOf(plainVector(style(text = "dev"))),
+        )
     }
 
     @Test
@@ -247,10 +262,10 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `colours with alpha and resource references pass through untouched`() {
-        val output = plainVector(style(color = "#80E91E63", textColor = "@color/banner_text"))
-        assertMatchesGolden("colour_alpha_and_reference.xml", output)
-        assertTrue("android:fillColor=\"#80E91E63\"" in output, output)
-        assertTrue("android:fillColor=\"@color/banner_text\"" in output, output)
+        assertMatchesGolden(
+            "colour_alpha_and_reference.xml",
+            plainVector(style(color = "#80E91E63", textColor = "@color/banner_text")),
+        )
     }
 
     // --------------------------------------------------------------- viewport
@@ -300,8 +315,7 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `unrecognised elements and attributes survive the rewrite`() {
-        // Replacement is whole-file: anything not re-emitted is gone from the app. A spike lost
-        // <monochrome> exactly this way.
+        // Replacement is whole-file: anything not re-emitted is gone from the app.
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_extras.xml"))
             .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
@@ -388,8 +402,7 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `displaced resources are reported so the silent override is visible`() {
-        // Nothing in the Gradle resource merger mentions the override, so this list is the only way
-        // a user finds out their hand-edited icon was replaced.
+        // Nothing in the resource merger mentions the override, so this list is the only notice.
         val result = adaptiveIcon(style())
         assertEquals(
             listOf(
@@ -404,35 +417,13 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `generation is byte-deterministic across runs`() {
-        // Golden tests and Gradle's build cache both depend on this; DOM attribute order and
-        // whitespace handling are the usual places it quietly stops being true.
+        // Attribute order and whitespace are the usual places determinism is lost.
         val first = adaptiveIcon(style()).files
         val second = adaptiveIcon(style()).files
         assertEquals(first, second)
     }
 
     // ---------------------------------------------------------------- helpers
-
-    private fun input(name: String) = readTestResource("input/$name")
-
-    /** Every coordinate pair in a `pathData` string, in order. */
-    private fun textPoints(pathData: String): List<Pair<Double, Double>> =
-        Regex("(-?[\\d.]+) (-?[\\d.]+)").findAll(pathData)
-            .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
-            .toList()
-
-    /** The ribbon quad's `pathData`, picked out by the fill [style] asked for. */
-    private fun quadPathOf(output: String): String =
-        Regex("android:fillColor=\"#FFE91E63\"\\s+android:pathData=\"([^\"]+)\"").find(output)
-            ?.groupValues?.get(1)
-            ?: error("No ribbon quad in $output")
-
-    private fun quadPointsOf(output: String): List<Pair<Double, Double>> = textPoints(quadPathOf(output))
-
-    /** The text outline's `pathData`: the one path carrying curve segments. */
-    private fun glyphPathOf(output: String): String =
-        Regex("android:pathData=\"(M [^\"]*Q[^\"]*)\"").find(output)?.groupValues?.get(1)
-            ?: error("No glyph path in $output")
 
     /**
      * How far across the corner diagonal a point sits, measured along the two axes rather than as a
@@ -459,27 +450,6 @@ abstract class BannerGeneratorTestCases {
         return (edges.max() - edges.min()) / Math.sqrt(2.0)
     }
 
-    /** Banners `foreground.xml` as a plain `<vector>` launcher icon and returns the one output. */
-    private fun plainVector(style: BannerStyle): String {
-        val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml"))
-        return generate(request(resources, style, icon = DRAWABLE_ICON))
-            .success().files.getValue("drawable/ic_launcher.xml")
-    }
-
-    /** The default Android Studio shape: adaptive icon whose foreground and monochrome coincide. */
-    private fun adaptiveIcon(style: BannerStyle): GenerationResult.Success {
-        val resources = FakeResources()
-            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
-            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
-        return generate(request(resources, style)).success()
-    }
-
-    private companion object {
-        val DRAWABLE_ICON = ResourceRef("drawable", "ic_launcher")
-        const val ADAPTIVE_PATH = "mipmap-anydpi-v26/ic_launcher.xml"
-        const val FOREGROUND_PATH = "drawable/ic_launcher_foreground.xml"
-        const val MONO_PATH = "drawable/ic_launcher_foreground_iconbanner_mono.xml"
-    }
 }
 
 class BannerGeneratorTest : BannerGeneratorTestCases() {

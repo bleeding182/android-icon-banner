@@ -2,6 +2,7 @@ package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.FontSpec
 import io.github.bleeding182.iconbanner.font.FontCache
+import io.github.bleeding182.iconbanner.generator.testFont
 import org.gradle.testkit.runner.GradleRunner
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.io.File
@@ -18,11 +19,25 @@ internal class IconBannerFixture(val dir: File) {
      * A private font cache, pre-loaded with the checked-in face, so builds under test never reach
      * the network and never write into the developer's real shared cache.
      */
-    private val fontCache: File = File(dir, ".font-cache").apply {
-        val cache = FontCache(toPath())
-        val spec = FontSpec(BannerDefaults.FONT, BannerDefaults.WEIGHT, BannerDefaults.ITALIC)
-        cache.recordResolvedUrl(spec, FIXTURE_FONT_URL)
-        testFontBytes().inputStream().use { cache.store(FIXTURE_FONT_URL, it) }
+    private val fontCache: File = File(dir, ".font-cache")
+
+    init {
+        primeFont(FontSpec(BannerDefaults.FONT, BannerDefaults.WEIGHT, BannerDefaults.ITALIC))
+    }
+
+    /**
+     * Records [spec] in the private cache as already downloaded, serving the checked-in face.
+     *
+     * A build asking for a second font would otherwise reach the network, and the bytes are beside
+     * the point for every assertion here — what matters is which faces the font task was asked for
+     * and what it names the files it writes.
+     */
+    fun primeFont(spec: FontSpec) = apply {
+        val cache = FontCache(fontCache.toPath())
+        // A genuine gstatic URL: the provider refuses a cached URL from any other origin.
+        val url = "$FIXTURE_FONT_URL?${FontCache.specKey(spec)}"
+        cache.recordResolvedUrl(spec, url)
+        testFont.readBytes().inputStream().use { cache.store(url, it) }
     }
 
     /** Copies one of the checked-in source trees under `src/test/resources/testkit` into the fixture. */
@@ -43,8 +58,7 @@ internal class IconBannerFixture(val dir: File) {
                     mavenCentral()
                 }
                 dependencies {
-                    // AGP and the plugin under test have to share one class loader scope, or the
-                    // plugin cannot see the AGP types it is written against.
+                    // AGP and the plugin must share one class loader scope.
                     classpath("com.android.tools.build:gradle:$AGP_VERSION")
                     classpath(files(${pluginClasspath()}))
                 }
@@ -68,9 +82,8 @@ internal class IconBannerFixture(val dir: File) {
         File(dir, "local.properties").writeText("sdk.dir=${androidSdk().invariantPath()}\n")
         File(dir, "build.gradle.kts").writeText(
             """
-            // Deliberately no imports. Build scripts must not need any, and a flavor-scoped
-            // iconBanner block that quietly binds to the outer android { } receiver instead is a
-            // silent, whole-project failure — see `IconBannerPluginFunctionalTest`.
+            // Deliberately no imports: build scripts must not need any, and a flavor-scoped block binding
+            // to the wrong receiver would still compile.
             plugins {
                 id("com.android.application")
                 id("io.github.bleeding182.iconbanner")
@@ -96,7 +109,7 @@ internal class IconBannerFixture(val dir: File) {
         .withArguments(*arguments, "-P$FONT_CACHE_PROPERTY=${fontCache.invariantPath()}")
 
     /** The font the builds under test resolve to, for assertions that need to render text. */
-    fun fontFile(): File = testFont()
+    fun fontFile(): File = testFont
 
     /** The generated resource directory AGP wires the task's output into. */
     fun generatedResources(variant: String): File =
@@ -104,6 +117,9 @@ internal class IconBannerFixture(val dir: File) {
 
     fun generatedForeground(variant: String): File =
         File(generatedResources(variant), "drawable/ic_launcher_foreground.xml")
+
+    /** Where the font task drops the variant's faces, one file per distinct one. */
+    fun fontDirectory(variant: String): File = File(dir, "build/intermediates/icon_banner/font/$variant")
 
     companion object {
         // Must match the AGP the plugin is compiled against; there is no version catalog here.
@@ -117,13 +133,6 @@ internal class IconBannerFixture(val dir: File) {
             "https://fonts.gstatic.com/s/robotomono/v31/" +
                 "L0xuDF4xlVMF-BfR8bXMIhJHg45mwgGEFl0_Of2PQw.ttf"
 
-        private fun testFont(): File = File(
-            requireNotNull(IconBannerFixture::class.java.getResource("/font/RobotoMono-Bold.ttf")) {
-                "Missing the checked-in test font"
-            }.toURI()
-        )
-
-        private fun testFontBytes(): ByteArray = testFont().readBytes()
         private const val COMPILE_SDK = 37
 
         /**

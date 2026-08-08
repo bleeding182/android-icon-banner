@@ -1,7 +1,10 @@
 package io.github.bleeding182.iconbanner.gradle
 
+import io.github.bleeding182.iconbanner.api.BannerCorner
+import io.github.bleeding182.iconbanner.api.BannerLayer
 import io.github.bleeding182.iconbanner.api.BannerRequest
 import io.github.bleeding182.iconbanner.api.BannerStyle
+import io.github.bleeding182.iconbanner.api.FontSpec
 import io.github.bleeding182.iconbanner.api.GenerationResult
 import io.github.bleeding182.iconbanner.api.ResourceRef
 import io.github.bleeding182.iconbanner.generator.DefaultBannerGenerator
@@ -45,22 +48,35 @@ class IconBannerPluginFunctionalTest {
      * default style through unaltered. Precedence itself is covered far more cheaply in
      * [BannerMergeTest]; what these builds add is that the merged value survives the trip.
      */
-    private fun assertBannerText(expected: String, generated: File) {
-        assertEquals(renderForeground(expected), generated.readText())
+    private fun assertBannerText(
+        expected: String,
+        generated: File,
+        corner: BannerCorner = BannerDefaults.CORNER,
+    ) {
+        assertEquals(renderForeground(defaultStyle(MAIN_BANNER, expected, corner)), generated.readText())
     }
 
-    private fun renderForeground(text: String): String {
+    /** The default style the plugin resolves to when a block sets nothing but the text. */
+    private fun defaultStyle(
+        name: String,
+        text: String,
+        corner: BannerCorner = BannerDefaults.CORNER,
+    ) = BannerStyle(
+        name = name,
+        text = text,
+        color = BannerDefaults.COLOR,
+        textColor = BannerDefaults.TEXT_COLOR,
+        monochromeAlphaPercent = BannerDefaults.MONOCHROME_ALPHA.toDouble(),
+        corner = corner,
+        positionPercent = BannerDefaults.POSITION.toDouble(),
+        maxTextSizePercent = BannerDefaults.MAX_TEXT_SIZE.toDouble(),
+        lineHeight = BannerDefaults.LINE_HEIGHT,
+    )
+
+    private fun renderForeground(vararg styles: BannerStyle): String {
         val result = DefaultBannerGenerator().generate(
             BannerRequest(
-                style = BannerStyle(
-                    text = text,
-                    color = BannerDefaults.COLOR,
-                    textColor = BannerDefaults.TEXT_COLOR,
-                    corner = BannerDefaults.CORNER,
-                    maxTextSizePercent = BannerDefaults.MAX_TEXT_SIZE.toDouble(),
-                    lineHeight = BannerDefaults.LINE_HEIGHT,
-                ),
-                fontFile = fixture.fontFile(),
+                layers = styles.map { BannerLayer(it, fixture.fontFile()) },
                 icon = ResourceRef("mipmap", "ic_launcher"),
                 // The base fixture declares no round icon, so the plugin drops the conventional one.
                 roundIcon = null,
@@ -77,7 +93,7 @@ class IconBannerPluginFunctionalTest {
             """
             |$flavors
             |    productFlavors {
-            |        named("dev") { iconBanner { text = "DEV" } }
+            |        named("dev") { iconBanner { text = "DEV"; corner = bottomRight } }
             |    }
             """.trimMargin()
         )
@@ -87,42 +103,18 @@ class IconBannerPluginFunctionalTest {
         assertTrue(tasks.output.contains("generateDevReleaseIconBanner"))
         assertFalse(tasks.output.contains("generateProdDebugIconBanner"), tasks.output)
 
-        // --no-build-cache so the task actually executes: another case in this suite populates the
-        // shared local cache with an identical configuration, and a cached task logs nothing.
+        // --no-build-cache: another case populates the shared cache with identical output.
         val build = fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
 
-        assertBannerText("DEV", fixture.generatedForeground("devDebug"))
-        // Visible on a plain build, with no --info: shipping a bannered icon to production is the
-        // one mistake here that cannot be taken back, and nothing else in the build mentions the
-        // override at all.
+        // The corner rides along: Kotlin generates an accessor for the project block but none for
+        // container elements, so a flavor-scoped block resolves through the extension under test.
+        assertBannerText("DEV", fixture.generatedForeground("devDebug"), BannerCorner.BOTTOM_RIGHT)
+        // Visible without --info: a bannered production icon is the one mistake that cannot be undone.
         assertTrue(
             build.output.contains("icon banner: variant 'devDebug' replaces @mipmap/ic_launcher"),
             build.output,
         )
         assertTrue(build.output.contains("\"DEV\""), build.output)
-    }
-
-    @Test
-    fun `a flavor scoped block needs no import and does not leak to other flavors`() {
-        // Kotlin generates a type-safe accessor for the project-level block but none for container
-        // elements. With no candidate on the inner receiver, this same script still compiles and
-        // binds to the enclosing android { } receiver, configuring the project-wide defaults — so
-        // every variant gets a banner and nothing warns you. The accessors live in
-        // org.gradle.kotlin.dsl, which build scripts star-import, precisely to prevent that.
-        fixture.buildScript(
-            """
-            |$flavors
-            |    productFlavors {
-            |        named("dev") { iconBanner { text = "DEV"; corner = bottomRight } }
-            |    }
-            """.trimMargin()
-        )
-
-        val tasks = fixture.runner("tasks", "--group=icon banner").build()
-
-        assertTrue(tasks.output.contains("generateDevDebugIconBanner"), tasks.output)
-        assertFalse(tasks.output.contains("generateProdDebugIconBanner"), tasks.output)
-        assertFalse(tasks.output.contains("generateProdReleaseIconBanner"), tasks.output)
     }
 
     @Test
@@ -231,8 +223,7 @@ class IconBannerPluginFunctionalTest {
             """.trimMargin()
         )
 
-        // Without this the first build can pull the task straight out of the shared local build
-        // cache, which another case in this suite populated with an identical configuration.
+        // Without this the first build pulls the task out of the shared cache.
         val first = fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":generateDevDebugIconBanner")?.outcome)
 
@@ -244,6 +235,107 @@ class IconBannerPluginFunctionalTest {
     }
 
     @Test
+    fun `two banners on one variant land on one icon, from one pair of tasks`() {
+        fixture.buildScript(
+            """
+            |$flavors
+            |    productFlavors {
+            |        named("dev") {
+            |            iconBanner {
+            |                text = "DEV"
+            |                banner("sha") {
+            |                    text = "abc123"
+            |                    corner = bottomRight
+            |                }
+            |            }
+            |        }
+            |    }
+            """.trimMargin()
+        )
+
+        val tasks = fixture.runner("tasks", "--group=icon banner").build()
+        // One pair per variant however many banners: they rewrite the same icon resources.
+        assertEquals(1, tasks.output.occurrencesOf("generateDevDebugIconBanner"), tasks.output)
+        assertEquals(1, tasks.output.occurrencesOf("downloadDevDebugIconBannerFont"), tasks.output)
+
+        val build = fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
+
+        // Both markers on the one icon, in declaration order — main first, then the named banner.
+        assertEquals(
+            renderForeground(
+                defaultStyle(MAIN_BANNER, "DEV"),
+                defaultStyle("sha", "abc123", BannerCorner.BOTTOM_RIGHT),
+            ),
+            fixture.generatedForeground("devDebug").readText(),
+        )
+        // Still one lifecycle line for the variant, naming every banner on it.
+        assertEquals(
+            1,
+            build.output.occurrencesOf("icon banner: variant 'devDebug' replaces @mipmap/ic_launcher"),
+            build.output,
+        )
+        assertTrue(build.output.contains("main = \"DEV\", sha = \"abc123\""), build.output)
+    }
+
+    @Test
+    fun `banners in different fonts get a file each in the variant's font directory`() {
+        fixture.primeFont(FontSpec("Roboto Mono", 400, true))
+        fixture.buildScript(
+            """
+            |$flavors
+            |    productFlavors {
+            |        named("dev") {
+            |            iconBanner {
+            |                text = "DEV"
+            |                banner("sha") {
+            |                    text = "abc123"
+            |                    corner = bottomRight
+            |                    weight = 400
+            |                    italic = true
+            |                }
+            |            }
+            |        }
+            |    }
+            """.trimMargin()
+        )
+
+        fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
+
+        // Named after the face, never after the banner, so two banners sharing one would share a file.
+        assertEquals(
+            listOf("roboto-mono-400-italic.ttf", "roboto-mono-700.ttf"),
+            fixture.fontDirectory("devDebug").list()?.sorted(),
+        )
+    }
+
+    @Test
+    fun `a banner cleared in a build type leaves the rest of the variant's banners alone`() {
+        fixture.buildScript(
+            """
+            |    iconBanner {
+            |        text = "EVERYWHERE"
+            |        banner("sha") { text = "abc123"; corner = bottomRight }
+            |    }
+            |$flavors
+            |    buildTypes {
+            |        named("release") { iconBanner { banner("sha") { remove() } } }
+            |    }
+            """.trimMargin()
+        )
+
+        fixture.runner(":generateDevDebugIconBanner", ":generateDevReleaseIconBanner").build()
+
+        assertEquals(
+            renderForeground(
+                defaultStyle(MAIN_BANNER, "EVERYWHERE"),
+                defaultStyle("sha", "abc123", BannerCorner.BOTTOM_RIGHT),
+            ),
+            fixture.generatedForeground("devDebug").readText(),
+        )
+        assertBannerText("EVERYWHERE", fixture.generatedForeground("devRelease"))
+    }
+
+    @Test
     fun `no banner configured anywhere registers no tasks`() {
         fixture.buildScript(flavors)
 
@@ -252,4 +344,6 @@ class IconBannerPluginFunctionalTest {
         assertFalse(tasks.output.contains("IconBanner"), tasks.output)
         assertFalse(fixture.generatedResources("devDebug").exists())
     }
+
+    private fun String.occurrencesOf(fragment: String): Int = split(fragment).size - 1
 }

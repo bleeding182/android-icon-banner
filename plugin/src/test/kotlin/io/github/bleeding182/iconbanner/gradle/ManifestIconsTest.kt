@@ -77,11 +77,7 @@ class ManifestIconsTest {
 
     @Test
     fun `an invented round icon backed only by rasters is dropped`() {
-        // The layout this exists for: an app that never migrated to adaptive icons still ships
-        // legacy per-density ic_launcher_round.webp files and declares no android:roundIcon. The
-        // reference resolves to something, so a mere emptiness check keeps it, and the generator
-        // then fails the build with "only raster files were found" over a resource the plugin
-        // invented — contradicting the policy that rasters are skipped in silence.
+        // An app that never migrated still ships legacy per-density ic_launcher_round, with no XML.
         val resources = FakeResources()
             .raster("mipmap-hdpi/ic_launcher_round.webp")
             .raster("mipmap-xxhdpi/ic_launcher_round.webp")

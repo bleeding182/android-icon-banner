@@ -5,13 +5,17 @@ Throwaway tooling for looking at generated icons. Not part of the plugin, not on
 ## Regenerating the README images
 
 ```bash
-./scripts/preview.sh              # docs/preview.png            production / dev / full foreground
-./scripts/preview-monochrome.sh   # docs/preview-monochrome.gif themed icon cycling three tints
+./scripts/preview.sh              # docs/preview.png            production / staging / full foreground
+./scripts/preview-monochrome.sh   # docs/preview-monochrome.webp themed icon cycling three tints
 ```
 
 Both need `python3`, `inkscape` and `imagemagick` on PATH, and both build `:app` first. They render
 whatever `app/build.gradle.kts` currently configures, so the images track the demo app's settings —
 change the corner, text or font there and rerun.
+
+The animation is WebP rather than GIF, and should stay that way: the icon is masked to a circle, and
+GIF carries one bit of alpha, so every antialiased pixel on that rim snaps to fully opaque or fully
+gone. WebP keeps all 256 levels — measured, 173 distinct ones against the GIF's 2.
 
 ## Previewing one drawable
 

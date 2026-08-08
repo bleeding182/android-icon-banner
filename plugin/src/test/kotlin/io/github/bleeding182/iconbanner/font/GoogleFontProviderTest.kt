@@ -1,5 +1,6 @@
 package io.github.bleeding182.iconbanner.font
 
+import io.github.bleeding182.iconbanner.generator.testFont
 import io.github.bleeding182.iconbanner.api.FontSpec
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -11,6 +12,7 @@ import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -43,8 +45,7 @@ class GoogleFontProviderTest {
 
             val request = server.cssRequests.single()
             assertEquals("family=Roboto+Mono:wght@700", request.query)
-            // Pinned: the css2 endpoint serves woff2 only to agents it recognises as modern
-            // browsers, so this string has to stay something it does not recognise.
+            // Pinned: css2 serves woff2 to agents it recognises, and the JDK cannot read woff2.
             assertEquals(
                 "android-icon-banner (+https://github.com/bleeding182/android-icon-banner)",
                 request.userAgent,
@@ -242,8 +243,7 @@ class GoogleFontProviderTest {
     @Test
     fun `a font url outside gstatic is refused rather than downloaded`(@TempDir cacheDir: File) {
         server().use { server ->
-            // The .ttf address is lifted straight out of a response body, so it is attacker-shaped
-            // input: a MITM on the CSS request, or a compromised endpoint, picks it.
+            // The .ttf address comes out of a response body, so it is attacker-shaped input.
             server.css = { _, _ ->
                 200 to """
                     @font-face {
@@ -269,8 +269,7 @@ class GoogleFontProviderTest {
 
     @Test
     fun `a cached url outside gstatic is refused without a download`(@TempDir cacheDir: File) {
-        // A poisoned or hand-edited cache file must not become a fetch either: resolvedUrl feeds
-        // the downloader directly on the fast path that never touches the CSS endpoint.
+        // resolvedUrl feeds the downloader directly on the fast path, so the cache is checked too.
         FontCache(cacheDir.toPath()).recordResolvedUrl(robotoMonoBold, "https://fonts.gstatic.com.evil/x.ttf")
 
         val failure = assertFailsWith<FontResolutionException> {
@@ -343,19 +342,8 @@ class GoogleFontProviderTest {
             stream.map { it.fileName.toString() }.filter { it.endsWith(".tmp") }.sorted().toList()
         }
 
-    private fun assertContentEquals(expected: ByteArray, actual: ByteArray) {
-        assertEquals(expected.size, actual.size, "byte counts differ")
-        assertTrue(expected.contentEquals(actual), "contents differ")
-    }
-
     private companion object {
-        val fontFixture: ByteArray = run {
-            val stream = assertNotNull(
-                GoogleFontProviderTest::class.java.getResourceAsStream("/font/RobotoMono-Bold.ttf"),
-                "missing test fixture /font/RobotoMono-Bold.ttf",
-            )
-            stream.use { it.readBytes() }
-        }
+        val fontFixture: ByteArray by lazy { testFont.readBytes() }
 
         /** Trimmed from a real 400 response, keeping the shape that matters: script around one sentence. */
         val googleErrorPage: String = """

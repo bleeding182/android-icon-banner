@@ -1,6 +1,5 @@
 package io.github.bleeding182.iconbanner.generator
 
-import io.github.bleeding182.iconbanner.api.BannerRequest
 import io.github.bleeding182.iconbanner.api.ResourceRef
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -11,8 +10,6 @@ import java.io.File
  * asymmetry with silently skipped rasters is deliberate and covered in [BannerGeneratorTestCases].
  */
 class BannerGeneratorFailureTest {
-
-    private fun input(name: String) = readTestResource("input/$name")
 
     @Test
     fun `an icon with no XML at all fails and names the raster files`() {
@@ -145,12 +142,11 @@ class BannerGeneratorFailureTest {
             writeText("this is not a TrueType file")
             deleteOnExit()
         }
-        val request = BannerRequest(
-            style = style(),
-            fontFile = broken,
+        val request = request(
+            resources,
+            style(),
             icon = ResourceRef("drawable", "ic_launcher"),
-            roundIcon = null,
-            resources = resources,
+            fontFile = broken,
         )
         assertMessageContains(generate(request).failureMessage(), broken.name, "font")
     }

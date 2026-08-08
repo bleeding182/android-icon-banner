@@ -18,12 +18,10 @@ import java.util.Locale
 internal data class FittedText(val pathData: String, val capHeight: Double)
 
 /**
- * Turns text into VectorDrawable `pathData`, using the JDK's own font support.
+ * Turns text into VectorDrawable `pathData` using the JDK's own font support.
  *
- * Two properties of `GlyphVector.getOutline()` make this work without a font library, both
- * confirmed by prototype: quadratic and cubic segments survive rather than being flattened into
- * line soup, and the coordinate convention is baseline-at-zero with y increasing downward — exactly
- * the VectorDrawable convention. No axis flip, no correction transform.
+ * `GlyphVector.getOutline()` keeps quadratic and cubic segments rather than flattening them, and
+ * its baseline-at-zero, y-down convention is already the VectorDrawable one. No axis flip.
  */
 internal class BannerText(fontFile: File) {
 
@@ -36,10 +34,8 @@ internal class BannerText(fontFile: File) {
     val font: Font = Font.createFont(Font.TRUETYPE_FONT, fontFile)
 
     /**
-     * The first character [font] cannot draw, or null when it can draw all of [text].
-     *
-     * A row of missing-glyph boxes stamped onto the launcher icon is worse than a build error, so
-     * the caller turns this into a failure.
+     * The first character [font] cannot draw. Missing-glyph boxes on a launcher icon are worse than
+     * a build error, so the caller fails.
      */
     fun firstUndisplayableCharacter(text: String): String? {
         val index = font.canDisplayUpTo(text)
@@ -50,15 +46,8 @@ internal class BannerText(fontFile: File) {
     }
 
     /**
-     * The text's natural width per unit of cap height, or null when there is nothing to draw.
-     *
-     * The one number the geometry needs from the font before any of it exists. The band is derived
-     * from the text, so [Ribbon] has to know the text's proportions to work out what size it can be
-     * drawn at — and this is scale-free, so measuring it once at the reference size is enough.
-     *
-     * "Cap height" is really the ink height of this particular string: for `"dev"` it is the
-     * ascender of the `d`, and for all-caps text it is the cap height proper. That is the number the
-     * band is sized against either way, so the two agree.
+     * Width per unit of cap height — what [Ribbon] needs to size the band. Scale-free, so measuring
+     * once at the reference size is enough. "Cap height" is this string's ink height.
      */
     fun naturalWidthPerCapHeight(text: String): Double? {
         if (text.isEmpty()) return null
@@ -68,19 +57,11 @@ internal class BannerText(fontFile: File) {
     }
 
     /**
-     * The text outline drawn at the band's [Ribbon.textSize], centred on the pivot and rotated into
-     * place, with every transform baked into the coordinates, plus the size it settled on.
+     * The outline at [Ribbon.textSize], centred on the pivot and rotated, with every transform baked
+     * into the coordinates. Null when there is nothing to draw.
      *
-     * No fitting happens here any more: [Ribbon] has already solved the size from
-     * [naturalWidthPerCapHeight], so this only has to hit it. All this needs from the reference
-     * measurement is the scale that turns its ink height into [Ribbon.textSize].
-     *
-     * The transform is baked rather than emitted as a `<group android:rotation="...">` because the
-     * monochrome output needs the ribbon and the text to share one `<path>` element so even-odd
-     * fill can punch the glyphs out as holes. A group cannot straddle that.
-     *
-     * Returns null when there is nothing to draw — empty text, or text that is all whitespace and
-     * therefore has an empty outline.
+     * Baked rather than a `<group android:rotation>` because the monochrome output needs the ribbon
+     * and the text in one `<path>` for even-odd fill. A group cannot straddle that.
      */
     fun fit(text: String, ribbon: Ribbon): FittedText? {
         if (text.isEmpty()) return null
@@ -91,9 +72,8 @@ internal class BannerText(fontFile: File) {
         val scale = ribbon.textSize / referenceBounds.height
         if (!scale.isFinite() || scale <= 0.0) return null
 
-        // Re-derive at the final size rather than scaling the reference outline: hinting and
-        // advance rounding are size-dependent, so the glyphs the font actually draws at this size
-        // are not exactly the reference ones scaled.
+        // Re-derive at the final size: hinting and advance rounding are size-dependent, so a scaled
+        // reference outline is not what the font draws.
         val finalOutline = outlineAt(text, (REFERENCE_SIZE * scale).toFloat())
         val bounds = finalOutline.bounds2D
         if (bounds.width <= 0.0 || bounds.height <= 0.0) return null

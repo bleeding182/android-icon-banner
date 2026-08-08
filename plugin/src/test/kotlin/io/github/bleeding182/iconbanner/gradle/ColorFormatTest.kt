@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 
 class ColorFormatTest {
 
-    private fun check(value: String) = ColorFormat.check(value, "color", "devDebug")
+    private fun check(value: String) = ColorFormat.check(value, "color", "devDebug", "main")
 
     @Test
     fun `hex literals of every accepted length pass through unchanged`() {
@@ -24,9 +24,7 @@ class ColorFormatTest {
 
     @Test
     fun `a theme attribute is refused because a launcher icon has no theme`() {
-        // Android accepts ?attr/ in a fillColor, so this cannot be reported as "not a colour": the
-        // reason it is useless here is that nothing inflates a launcher icon with a theme, and the
-        // user needs to be told that rather than left doubting the syntax.
+        // Android accepts ?attr/ in a fillColor; it is useless here because a launcher has no theme.
         for (value in listOf("?attr/colorPrimary", "?colorPrimary")) {
             val failure = assertThrows(IllegalArgumentException::class.java) { check(value) }
             assertEquals(true, failure.message!!.contains("without a theme"), failure.message)
@@ -36,11 +34,14 @@ class ColorFormatTest {
     }
 
     @Test
-    fun `malformed literals are rejected with a message naming the property and variant`() {
-        val failure = assertThrows(IllegalArgumentException::class.java) { check("#FF00FF00FF") }
+    fun `the message names the banner too, since a variant may carry several`() {
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ColorFormat.check("nope", "textColor", "devDebug", "sha")
+        }
 
-        assertEquals(true, failure.message!!.contains("iconBanner.color"))
-        assertEquals(true, failure.message!!.contains("devDebug"))
+        assertEquals(true, failure.message!!.contains("iconBanner.textColor"), failure.message)
+        assertEquals(true, failure.message!!.contains("banner 'sha'"), failure.message)
+        assertEquals(true, failure.message!!.contains("variant 'devDebug'"), failure.message)
     }
 
     @Test

@@ -18,15 +18,8 @@ internal class XmlParseException(message: String, cause: Throwable?) : Exception
 /**
  * Namespace-aware DOM parsing plus a deterministic serialiser.
  *
- * Both halves matter for the same reason: the plugin's output *replaces* the original resource
- * wholesale, so anything not re-emitted is gone from the app. A spike lost a `<monochrome>` element
- * exactly this way. The parser therefore keeps comments and unknown attributes, and the serialiser
- * writes back everything it was given.
- *
- * The serialiser is hand-rolled rather than a JAXP `Transformer` because the identity transformer's
- * indentation depends on the whitespace text nodes already in the input and varies between JDK
- * builds. Golden-file tests and Gradle's build cache both need byte-identical output across runs
- * and machines.
+ * The output *replaces* the original resource, so anything the parser drops is dropped from the
+ * app, and byte-identical input must give byte-identical output or every golden file churns.
  */
 internal object AndroidXml {
 
@@ -74,8 +67,7 @@ internal object AndroidXml {
                 append("<!--").append(node.data).append("-->\n")
             }
 
-            // Vanishingly rare in resource XML, but the output replaces the original wholesale, so
-            // anything dropped here is dropped from the app.
+            // Rare, but the output replaces the original wholesale.
             is DocumentType -> {
                 append("<!DOCTYPE ").append(node.name)
                 node.publicId?.let { append(" PUBLIC \"").append(it).append('"') }
@@ -94,8 +86,7 @@ internal object AndroidXml {
 
             is Text -> {
                 val text = node.data
-                // Whitespace between elements is layout, not content: drop it and re-indent, so
-                // however the input happened to be formatted the output looks the same.
+                // Whitespace between elements is layout: drop it and re-indent, so output is canonical.
                 if (text.isBlank()) return
                 indent(depth)
                 append(escapeText(text.trim())).append('\n')
@@ -133,11 +124,7 @@ internal object AndroidXml {
         append("</").append(element.nodeName).append(">\n")
     }
 
-    /**
-     * Namespace declarations first, then everything else alphabetically. DOM attribute order is an
-     * implementation detail of the parser, so imposing one here is what makes output reproducible;
-     * the chosen order is also the one Android Studio writes, which keeps golden diffs readable.
-     */
+    /** Namespace declarations first, then alphabetically: DOM attribute order is a parser detail. */
     private fun Element.orderedAttributes(): List<Node> =
         (0 until attributes.length)
             .map { attributes.item(it) }
@@ -160,9 +147,8 @@ internal object AndroidXml {
             .replace("\t", "&#9;")
 
     /**
-     * The prefix bound to the Android namespace on [root], declaring `xmlns:android` if the
-     * document does not already bind it. Respects an unusual prefix rather than assuming
-     * `android:`, since a rewritten document has to keep working.
+     * The prefix bound to the Android namespace on [root], declaring `xmlns:android` if absent.
+     * Respects an unusual prefix rather than imposing one.
      */
     fun androidPrefix(root: Element): String {
         val existing = root.lookupPrefix(ANDROID_NS)

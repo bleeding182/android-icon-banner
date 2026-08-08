@@ -27,6 +27,12 @@ download<Variant>IconBannerFont
 generate<Variant>IconBanner
 ```
 
+Still two, however many banners the variant carries: they both work on the same icon resources, so a
+task per banner would only put several writers in one generated directory. The font task fetches
+every face the variant's banners ask for into a directory of its own, one file per *distinct* family,
+weight and slant, so two banners sharing a face cost one download. The generate task paints all of
+them onto each icon file and writes it once.
+
 Both are cacheable and up-to-date-checked, so an unchanged build does no work and makes no network
 requests.
 
@@ -35,26 +41,33 @@ requests.
 A launcher masks the icon to a circle, squircle or teardrop of its choosing, so a banner placed
 against the full 108dp canvas gets sheared off at the rim. Two constants keep it inside:
 
-- The band's **centre line** sits at a fixed fraction of the icon — 0.72 of the shorter edge,
-  measured along each axis from the corner — chosen so that at the default style the band's
-  corner-side edge still lands inside the narrowest mask a launcher is likely to apply, while the
-  inner edge stays clear of the middle of the icon.
+- The band's **centre line** sits where `position` puts it, measured as a distance from the icon's
+  centre: `position` is that distance as a percentage of the safe zone's radius, so 0 is the middle
+  of the icon and 100 is the point at which no text fits. The default of 65 is chosen so that at the
+  default style the band's corner-side edge still lands inside the narrowest mask a launcher is
+  likely to apply, while the inner edge stays clear of the middle of the icon.
 - The **text length** budget is the chord of that centre line across the adaptive-icon safe zone —
   the 66dp circle of the 108dp canvas — so long text shrinks rather than running out under the mask.
+  In terms of the setting it is `2r · √(1 − position²)`, which is what makes 100 an endpoint rather
+  than a convention, and what makes pushing a banner out cost text size so quickly.
 
 Everything else follows from the text. `maxTextSize` is the cap height the text would like to be,
 as a percentage of the icon's shorter viewport edge; the text is drawn at that size, or smaller if
-the length budget cannot take it. The band is then `lineHeight` times whatever the text ended up
+the length budget cannot take it, or smaller again if `position` has pushed the band far enough out
+that half a cap height either side of it would leave the safe zone. The band is then `lineHeight`
+times whatever the text ended up
 as — measured across the band, which is the same direction a cap height is measured in — so it hugs
 the text instead of the text rattling around inside it, and the clearance above and below the glyphs
 is simply what `lineHeight` left over. There is no font-size knob and no separate padding knob.
 
 `lineHeight` is cosmetic and nothing else. It plays no part in the fit, and it does not restrict
-`maxTextSize`. Because the centre line is pinned, extra thickness grows symmetrically: the
-corner-side edge moves towards the corner, where a mask may simply decline to draw it, and the inner
-edge moves towards the middle of the icon, which is a matter of taste. Neither costs the text
-anything. Only the *text* has to survive the mask, and that — half a cap height either side of a
-fixed line, against the safe zone's rim — is what caps `maxTextSize` at 21.
+`maxTextSize`. Because the centre line does not depend on the thickness, extra thickness grows
+symmetrically: the corner-side edge moves towards the corner, where a mask may simply decline to draw
+it, and the inner edge moves towards the middle of the icon, which is a matter of taste. Neither
+costs the text anything. Only the *text* has to survive the mask, and that — half a cap height either
+side of the centre line, against the safe zone's rim — is what caps `maxTextSize` at 21. That ceiling
+is the value at the default position and stays put as a sanity bound; past the default the real limit
+tightens, and the text is quietly clamped to it rather than the build being failed.
 
 **Two kinds of length, and they differ by √2.** The ribbon runs at 45°, so the quad's coordinates are
 intercepts on the x and y axes, while thicknesses and clearances are true distances measured across
@@ -70,8 +83,23 @@ anchored on its corner-side edge and grew inwards — and that quietly made the 
 position: a thicker band sat further in, where the chord across the safe zone is longer, so it also
 bought text room. Sizing the band from the text with that coupling in place runs the loop backwards
 and collapses: smaller text, thinner band, band drifts towards the corner, chord shortens, smaller
-text again. Pinning the centre line breaks the loop, and the length budget then no longer depends
-on the text at all, so the size is a division rather than a search.
+text again. Making the centre line an input breaks the loop, and the length budget then no longer
+depends on the text at all, so the size is a division rather than a search. It is also why `position`
+is an absolute scale rather than a nudge measured in band thicknesses, which would rebuild the loop
+exactly.
+
+**Only opposite corners are disjoint.** Where the centre line sits also decides which pairs of
+banners can share an icon, and the answer is narrower than it looks. At the default style a
+top-left band covers `x + y ∈ [0.58s, 0.86s]` of the shorter edge `s`, and a top-right band covers
+`(s − x) + y` over the same range; the two strips cross at `(0.5s, 0.22s)`, which is `0.28s` from the
+icon's centre against a mask at `0.33s`. The crossing is drawn, not masked away. So top-left with
+bottom-right and top-right with bottom-left never touch, and every other pairing overlaps somewhere
+near the middle of the icon.
+
+Banners are painted in `z` order, lowest first, with declaration order breaking ties — so the highest
+`z` is the one that stays readable where two of them cross. Two banners in the *same* corner draw a
+build warning naming both, because that is an arrangement nobody chooses on purpose; adjacent corners
+do not, because choosing two different corners is a choice.
 
 ## Themed icons
 
@@ -82,6 +110,19 @@ apart.
 The plugin instead clips the icon content away from the band and punches the text out of the ribbon
 as transparent holes, using an `evenOdd` fill. The text is a genuine cutout, so it stays legible
 whatever tint the system picks.
+
+Alpha being all that survives, it is also all a banner gets to choose here: `monochromeAlpha` sets
+the band's, and the tint then comes out lighter or heavier at the same hue. `color` and `textColor`
+never reach this layer.
+
+With several banners the clips **nest**. `VectorDrawable` unions two `<clip-path>` elements in one
+`<group>` rather than intersecting them, and each of these clips is *everything outside* one band —
+so a single group carrying both would keep the artwork everywhere except where the two bands cross,
+which is the opposite of what either clip asked for. Each banner therefore wraps whatever is at the
+root in a group of its own: N nested groups, one clip each, which does intersect. Only once all of
+them are in place are the even-odd ribbon paths appended at the root, in paint order. A ribbon
+appended earlier would be swallowed by the next banner's group and cut out by the very clip meant to
+protect the artwork from it.
 
 Where that output lands depends on your icon. When `<monochrome>` has its own drawable it is
 bannered in place, under its own name, and the adaptive icon is left alone. When `<monochrome>` and
@@ -94,6 +135,11 @@ icon is rewritten to redirect `<monochrome>` at it.
 Faces are downloaded from Google Fonts on demand and cached in
 `~/.gradle/caches/android-icon-banner/fonts`, shared across projects and surviving `clean`. The
 first build that uses a family fetches it; nothing after that hits the network.
+
+A variant asks for as many faces as its banners have distinct combinations of family, weight and
+slant — not one. They are fetched into the variant's font directory under a name derived from the
+face rather than from the banner that wanted it, so two banners in the same face are handed the same
+file instead of two copies of the same bytes.
 
 The route is the public CSS endpoint, `fonts.googleapis.com/css2`, whose response is scraped for the
 `fonts.gstatic.com` URL of the face, which is then downloaded and checked for TrueType magic before

@@ -8,12 +8,7 @@ import java.io.File
 /**
  * [ResourceLookup] over a variant's static resource roots.
  *
- * [roots] must be ordered highest priority first, which is exactly the order AGP's
- * `sources.res.static` hands them over. Source-set precedence is applied per qualifier: a
- * `drawable-v24/ic.xml` in a flavor hides only the `drawable-v24/ic.xml` in `main`, while a
- * `drawable/ic.xml` that only `main` provides still shows through. That mirrors the resource
- * merger, which matters because the plugin's generated directory outranks every source set — the
- * file handed to the generator has to be the one that would otherwise have won.
+ * [roots] must be highest priority first, which is the order AGP's `sources.res.static` gives.
  */
 internal class DirectoryResourceLookup(private val roots: List<File>) : ResourceLookup {
 

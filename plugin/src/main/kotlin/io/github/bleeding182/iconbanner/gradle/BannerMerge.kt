@@ -8,79 +8,108 @@ import org.gradle.api.provider.Provider
 internal object BannerDefaults {
     const val COLOR = "#FF0000"
     const val TEXT_COLOR = "#FFFFFF"
+
+    /** Opaque: a themed banner looks like the rest of the icon until someone asks for a shade. */
+    const val MONOCHROME_ALPHA = 100
+
     val CORNER = BannerCorner.TOP_LEFT
 
     /**
-     * Cap height as a percentage of the icon's shorter edge, and the band's thickness as a multiple
-     * of it.
-     *
-     * 13 stays where it was: short text comes out 14.04 units of 108 — 9.4dp on a launcher — and
-     * anything longer than about three characters is cut down by the length budget regardless, so the
-     * value only decides how `QA` and `DEV` look.
-     *
-     * 1.5 is *not* continuity with the band-width knob these replaced, which is how it was first
-     * arrived at. That reasoning was measuring the band along the axes, so a "line height" of 1.5
-     * drew 1.06 cap heights of band and left the glyphs touching both edges. Read honestly it leaves
-     * a quarter of the cap height clear above and below the text, which is where the ribbon stops
-     * looking crowded; and at 13 the band's corner-side edge still lands inside the 66dp safe zone
-     * (`0.295 * s` against `0.306 * s`), so even a short marker's band is drawn in full under every
-     * launcher mask. Looser than this starts losing the corner of the band to the mask and pushing
-     * the inner edge across the middle of the artwork.
+     * 13 only decides how two- and three-character markers look; longer text is length-bound anyway.
+     * 1.5 leaves a quarter of the cap height clear above and below.
      */
     const val MAX_TEXT_SIZE = 13
     const val LINE_HEIGHT = 1.5
 
+    /**
+     * See [io.github.bleeding182.iconbanner.generator.Ribbon.DEFAULT_POSITION_PERCENT], which a
+     * test ties this to.
+     */
+    const val POSITION = 65
+
     const val FONT = "Roboto Mono"
     const val WEIGHT = 700
     const val ITALIC = false
+
+    /** Everything on one level until someone says otherwise; ties fall back to declaration order. */
+    const val Z = 0
 }
 
 /**
- * A merged banner configuration for one variant. Every value is still lazy; nothing here has been
- * evaluated. A variant with no banner has no [ResolvedBanner] at all.
+ * One merged banner for one variant. Every value is still lazy; nothing here has been evaluated.
  */
 internal class ResolvedBanner(
+    /** The DSL name; `main` for the one made of the blocks' own properties. */
+    val name: String,
     val text: Provider<String>,
     val color: Provider<String>,
     val textColor: Provider<String>,
+    val monochromeAlpha: Provider<Int>,
     val corner: Provider<BannerCorner>,
+    val position: Provider<Int>,
     val maxTextSize: Provider<Int>,
     val lineHeight: Provider<Double>,
+    val z: Provider<Int>,
     val fontFamily: Provider<String>,
     val fontWeight: Provider<Int>,
     val fontItalic: Provider<Boolean>,
 )
 
 /**
- * Merges the blocks that apply to one variant.
+ * Merges the blocks applying to one variant into every banner it gets. Empty means no tasks.
  *
- * [sources] must already be in precedence order — build type first, then product flavors in
- * dimension order, then the project-level block last. That is AGP's own rule for every other
- * setting, so users do not have to learn a second one.
- *
- * Returns `null` when the variant gets no banner: either nothing assigned `text` anywhere, or the
- * highest-precedence block that mentioned it assigned `null`.
+ * [sources] must be in AGP's precedence order: build type, product flavors in dimension order,
+ * then the project block. `main` always comes first, having no declared position to observe.
  */
-internal fun mergeBanner(sources: List<IconBannerDsl>): ResolvedBanner? {
-    val text = resolveText(sources) ?: return null
-    return ResolvedBanner(
-        text = text,
-        color = merge(sources, BannerDefaults.COLOR) { it.color },
-        textColor = merge(sources, BannerDefaults.TEXT_COLOR) { it.textColor },
-        corner = merge(sources, BannerDefaults.CORNER) { it.corner },
-        maxTextSize = merge(sources, BannerDefaults.MAX_TEXT_SIZE) { it.maxTextSize },
-        lineHeight = merge(sources, BannerDefaults.LINE_HEIGHT) { it.lineHeight },
-        fontFamily = merge(sources, BannerDefaults.FONT) { it.font },
-        fontWeight = merge(sources, BannerDefaults.WEIGHT) { it.weight },
-        fontItalic = merge(sources, BannerDefaults.ITALIC) { it.italic },
-    )
+internal fun mergeBanner(sources: List<IconBannerDsl>): List<ResolvedBanner> {
+    val main = mergeOne(MAIN_BANNER, textSources = sources, all = sources)
+    val named = declarationOrder(sources).mapNotNull { name ->
+        val own: List<IconBannerOptions> = sources.mapNotNull { it.banners.findByName(name) }
+        mergeOne(name, textSources = own, all = own + sources)
+    }
+    return listOfNotNull(main) + named
 }
 
 /**
- * The winning `text`, or `null` for "no banner". Decided purely from assignment state, so a
- * provider-valued text enables the banner without anyone having to know its value yet.
+ * Every declared name, deduped on first appearance.
+ *
+ * Walked backwards, lowest precedence first, so a project-block banner paints behind one a flavor
+ * added on top. Multi-dimension flavors therefore come out in reverse dimension order.
  */
-private fun resolveText(sources: List<IconBannerDsl>): Provider<String>? {
+private fun declarationOrder(sources: List<IconBannerDsl>): List<String> =
+    sources.asReversed().flatMapTo(LinkedHashSet()) { it.bannerNames }.toList()
+
+/**
+ * One banner, or `null` when nothing turned it on.
+ *
+ * [textSources] is where `text` may come from — for a named banner its own declarations alone,
+ * since a block-level `text` belongs to `main`. [all] is every source for everything else.
+ */
+private fun mergeOne(
+    name: String,
+    textSources: List<IconBannerOptions>,
+    all: List<IconBannerOptions>,
+): ResolvedBanner? {
+    val text = resolveText(textSources) ?: return null
+    return ResolvedBanner(
+        name = name,
+        text = text,
+        color = merge(all, BannerDefaults.COLOR) { it.color },
+        textColor = merge(all, BannerDefaults.TEXT_COLOR) { it.textColor },
+        monochromeAlpha = merge(all, BannerDefaults.MONOCHROME_ALPHA) { it.monochromeAlpha },
+        corner = merge(all, BannerDefaults.CORNER) { it.corner },
+        position = merge(all, BannerDefaults.POSITION) { it.position },
+        maxTextSize = merge(all, BannerDefaults.MAX_TEXT_SIZE) { it.maxTextSize },
+        lineHeight = merge(all, BannerDefaults.LINE_HEIGHT) { it.lineHeight },
+        z = merge(all, BannerDefaults.Z) { it.z },
+        fontFamily = merge(all, BannerDefaults.FONT) { it.font },
+        fontWeight = merge(all, BannerDefaults.WEIGHT) { it.weight },
+        fontItalic = merge(all, BannerDefaults.ITALIC) { it.italic },
+    )
+}
+
+/** The winning `text`, or `null`. From assignment state alone, so a provider is never forced. */
+private fun resolveText(sources: List<IconBannerOptions>): Provider<String>? {
     for (source in sources) {
         when (val state = source.textState) {
             TextState.NotSet -> continue
@@ -92,9 +121,9 @@ private fun resolveText(sources: List<IconBannerDsl>): Provider<String>? {
 }
 
 private fun <T : Any> merge(
-    sources: List<IconBannerDsl>,
+    sources: List<IconBannerOptions>,
     default: T,
-    select: (IconBannerDsl) -> Property<T>,
+    select: (IconBannerOptions) -> Property<T>,
 ): Provider<T> {
     var merged: Provider<T>? = null
     for (source in sources) {

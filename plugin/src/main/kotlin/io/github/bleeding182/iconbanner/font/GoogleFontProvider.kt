@@ -15,25 +15,11 @@ import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Fetches a Google Font as a TrueType file and caches it for every project on the machine.
+ * Fetches a Google Font as TrueType and caches it for every project on the machine.
  *
- * Two steps, both at execution time. The CSS endpoint is asked for the family and axes; it answers
- * with a direct `.ttf` URL, which is then downloaded. No API key is involved.
- *
- * A repeat request for the same [FontSpec] touches the network zero times — not even for the CSS —
- * because the resolved URL is cached alongside the font. See [FontCache] for the layout.
- *
- * @param cacheDirectory root of the shared cache. Defaults to the Gradle user home so the download
- *   is paid once per machine and survives `clean`; always pass an explicit directory in tests.
- * @param offline serve from the cache or fail, naming the URL that would have been fetched.
- * @param cssEndpoint the Google Fonts CSS endpoint. Injectable so tests can point at a local server.
- *   The font URL itself is not configurable: it comes out of the CSS response body, so a test server
- *   controls it by emitting its own address.
- * @param fontOrigin the only origin a font may be downloaded from, as `scheme://host[:port]`. The
- *   `.ttf` URL is lifted out of a response body and can also come back out of a cache file written
- *   by an earlier build, so neither is trustworthy input. Injectable only so the loopback test
- *   server can stand in for gstatic.
- * @param userAgent sent on both requests. See [USER_AGENT].
+ * Two steps at execution time: the CSS endpoint is asked for the face, then the `.ttf` it names is
+ * downloaded. Both are cached, both are skipped offline, and every URL is checked against
+ * [fontOrigin] before it is opened.
  */
 internal class GoogleFontProvider @JvmOverloads constructor(
     val cacheDirectory: File = defaultCacheDirectory(),
@@ -48,8 +34,7 @@ internal class GoogleFontProvider @JvmOverloads constructor(
 
     override fun resolve(spec: FontSpec): File {
         validate(spec)
-        // Keyed by cache slot rather than by instance: the Gradle layer is free to build a provider
-        // per task, and two tasks in one daemon should still download a font only once.
+        // Keyed by cache slot, not instance: two tasks in one daemon share a download.
         val lock = locks.computeIfAbsent(cacheDirectory.absolutePath + "|" + FontCache.specKey(spec)) { Any() }
         synchronized(lock) {
             val knownUrl = cache.resolvedUrl(spec)?.also(::checkOrigin)
@@ -80,15 +65,7 @@ internal class GoogleFontProvider @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Refuses to fetch anything that is not served from [fontOrigin].
-     *
-     * The URL reaching here was lifted out of a `url(...)` in a response body, or read back out of a
-     * plain text file in the shared cache — a cleartext `http://elsewhere/x.ttf` in either place
-     * would otherwise be downloaded and handed to the glyph outliner. Scheme, host and port are
-     * compared individually rather than as one string so `https://fonts.gstatic.com@elsewhere/x.ttf`,
-     * whose *authority* starts with the expected host, is rejected too.
-     */
+    /** The URL came out of a response body or off disk, so it is checked before it is opened. */
     private fun checkOrigin(fontUrl: String) {
         val uri = try {
             URI(fontUrl)
@@ -111,10 +88,8 @@ internal class GoogleFontProvider @JvmOverloads constructor(
     }
 
     /**
-     * `…/css2?family=Roboto+Mono:wght@700`, or `…?family=Roboto+Mono:ital,wght@1,700` when italic.
-     *
-     * The axis list and the value tuple have to line up, which is why italic changes both halves.
-     * Only the family is percent-encoded; the `:`, `@` and `,` are structural and stay literal.
+     * `…/css2?family=Roboto+Mono:wght@700`, or `:ital,wght@1,700` when italic. The axis list and the
+     * value tuple have to line up and be alphabetical.
      */
     internal fun cssUrl(spec: FontSpec): String {
         val family = URLEncoder.encode(spec.family.trim().replace(Regex("""\s+"""), " "), UTF_8)
@@ -191,16 +166,8 @@ internal class GoogleFontProvider @JvmOverloads constructor(
         const val GOOGLE_FONTS_FILE_ORIGIN: String = "https://fonts.gstatic.com"
 
         /**
-         * Identifies the plugin, honestly.
-         *
-         * The `css2` endpoint picks a font format from the user agent, and it only serves woff2 to
-         * agents it *recognises* as modern browsers. Anything it does not recognise — this string,
-         * curl's default, an empty header — gets TrueType, which is what the plugin wants, since a
-         * woff2 would drag a brotli decoder in for no benefit. Verified against the live endpoint.
-         *
-         * So there is nothing to gain by claiming to be an ancient browser, which an earlier version
-         * of this did. Adding a *recognised* browser string is the only change that would break the
-         * format assumption.
+         * Identifies the plugin, honestly — and deliberately unrecognisable to `css2`, which serves
+         * woff2 only to agents it knows and TrueType to everything else. The JDK cannot read woff2.
          */
         const val USER_AGENT: String =
             "android-icon-banner (+https://github.com/bleeding182/android-icon-banner)"

@@ -30,8 +30,7 @@ class PathNumbersTest {
 
     @Test
     fun `never emits a negative zero`() {
-        // "-0" is legal pathData but pure noise in a diff, and it makes otherwise identical
-        // geometry look different depending on which side of zero a rounding error landed.
+        // "-0" is legal pathData but makes identical geometry look different.
         assertEquals("0", PathNumbers.format(-0.0))
         assertEquals("0", PathNumbers.format(-0.0001))
     }
@@ -43,8 +42,7 @@ class PathNumbersTest {
 
     @Test
     fun `uses a dot regardless of the default locale`() {
-        // The whole reason this class exists. Austrian and German locales format 23.1 as "23,1",
-        // which turns one pathData coordinate into two and corrupts every generated icon.
+        // Why this class exists: a comma decimal turns one coordinate into two.
         Locale.setDefault(Locale.forLanguageTag("de-AT"))
         assertEquals("23.1", PathNumbers.format(23.1))
         assertEquals("0.75", PathNumbers.format(0.75))

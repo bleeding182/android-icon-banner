@@ -4,16 +4,12 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 /**
- * The single place any number becomes text in generated `pathData`.
+ * The single place a number becomes text in `pathData`.
  *
- * Locale is the trap this exists to close. On a JVM whose default locale uses a comma decimal
- * separator, `"%.2f".format(23.1)` yields `23,10`, which turns every coordinate in a generated
- * VectorDrawable into two coordinates and silently corrupts the icon. [BigDecimal.toPlainString] is
- * locale-independent by construction, so there is no locale to get wrong here — no formatter, no
- * `Locale.ROOT` argument that a later edit could drop.
+ * Locale is the trap: `"%.2f".format(23.1)` is `23,10` on a comma-decimal JVM, which turns one
+ * coordinate into two. [java.math.BigDecimal.toPlainString] has no locale to get wrong.
  *
- * Rounds to [SCALE] decimals and strips trailing zeros, so `23.10` prints as `23.1` and `23.00` as
- * `23`. That keeps golden files readable and diffs small.
+ * Rounds to [SCALE] decimals and strips trailing zeros, keeping golden diffs small.
  */
 internal object PathNumbers {
 

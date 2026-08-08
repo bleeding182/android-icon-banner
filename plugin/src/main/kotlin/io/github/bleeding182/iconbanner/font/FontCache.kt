@@ -14,32 +14,21 @@ import java.security.MessageDigest
 /**
  * The on-disk font cache, shared by every project on the machine.
  *
- * Layout, relative to the cache root:
- *
  * ```
- * urls/<sha256 of the spec>.url     a text file holding the resolved TrueType URL
- * files/<sha256 of that URL>.ttf    the font itself
+ * urls/<sha256 of the spec>.url    the resolved TrueType URL
+ * files/<sha256 of the url>.ttf    the font itself
  * ```
  *
- * Two levels rather than one because the design requires a cache hit to make no network calls at
- * all: the font file is keyed by the URL, but the URL is only known after asking the CSS endpoint.
- * The `urls` mapping is what lets a repeat request skip that question too.
- *
- * Every write lands via a temporary file in the destination directory followed by an atomic move.
- * The cache outlives the builds that write it, so a half-written `.ttf` left behind by an
- * interrupted or interleaved build would poison every later build on the machine.
+ * Two levels because the CSS lookup and the download fail independently, and because several
+ * specs can resolve to one file. Writes move a temp file into place, so a killed build cannot
+ * leave a truncated font behind.
  */
 internal class FontCache(private val root: Path) {
 
     private val urlsDirectory: Path get() = root.resolve("urls")
     private val filesDirectory: Path get() = root.resolve("files")
 
-    /**
-     * The resolved TrueType URL recorded for [spec], or null when it has never been resolved here.
-     *
-     * This is a string out of a file on disk, not a value the current build produced, so callers must
-     * put it past [GoogleFontProvider]'s origin check before fetching it.
-     */
+    /** The URL recorded for [spec], or null. A string off disk, so the caller re-validates its origin. */
     fun resolvedUrl(spec: FontSpec): String? {
         val file = urlsDirectory.resolve(specKey(spec) + ".url")
         return try {
@@ -57,11 +46,8 @@ internal class FontCache(private val root: Path) {
     fun fontFile(url: String): Path = filesDirectory.resolve(sha256(url) + ".ttf")
 
     /**
-     * The cached font for [url], or null when it is absent or not a font.
-     *
-     * The magic-byte check is repeated on read, not just on write: a file that predates this check,
-     * or one truncated by a full disk, should re-download rather than fail somewhere far away in the
-     * glyph outliner.
+     * The cached font for [url], or null when absent or not a font. The magic-byte check is repeated
+     * on read, since a file may predate a stricter check.
      */
     fun cachedFont(url: String): Path? {
         val file = fontFile(url)
@@ -128,10 +114,7 @@ internal class FontCache(private val root: Path) {
             .digest(value.toByteArray(UTF_8))
             .joinToString("") { byte -> "%02x".format(byte) }
 
-        /**
-         * True when [file] starts with a recognised sfnt signature: `0x00010000` (TrueType), `true`
-         * (a legacy Apple variant) or `OTTO` (CFF outlines).
-         */
+        /** A recognised sfnt signature: `0x00010000`, `true` (legacy Apple) or `OTTO` (CFF outlines). */
         fun hasTrueTypeMagic(file: Path): Boolean {
             val magic = readMagic(file) ?: return false
             return magic.contentEquals(byteArrayOf(0x00, 0x01, 0x00, 0x00)) ||

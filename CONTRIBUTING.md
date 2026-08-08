@@ -2,8 +2,8 @@
 
 ```bash
 ./gradlew -p plugin build          # plugin and its tests
-./gradlew :app:assembleDevDebug    # demo app, bannered
-./gradlew :app:assembleProdDebug   # demo app, untouched
+./gradlew :app:assembleStagingDebug   # demo app, bannered
+./gradlew :app:assembleProdDebug      # demo app, untouched
 ```
 
 The plugin lives in `plugin/`, its own Gradle build, included from the root build's plugin
@@ -81,7 +81,7 @@ configures — change the corner, text or font and rerun:
 
 ```bash
 ./scripts/preview.sh              # docs/preview.png
-./scripts/preview-monochrome.sh   # docs/preview-monochrome.gif
+./scripts/preview-monochrome.sh   # docs/preview-monochrome.webp
 ```
 
 Both need `python3`, `inkscape` and `imagemagick`. `scripts/vd2svg.py` will also preview a single

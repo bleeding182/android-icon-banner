@@ -7,12 +7,9 @@ group = "io.github.bleeding182"
 // A release build passes -PpluginVersion=<tag without the leading v>; see .github/workflows/publish.yml.
 version = providers.gradleProperty("pluginVersion").getOrElse("0.0.1-SNAPSHOT")
 
-// AGP 9 supports JDK 17, so the plugin has to be loadable on a 17 daemon: class-file major 61 and
-// `org.gradle.jvm.version = 17` in the module metadata. Without a toolchain the bytecode level is
-// whatever JVM happens to run the build — 25 via the root build's gradle-daemon-jvm.properties, or
-// whatever JAVA_HOME points at for a plain `-p plugin` invocation — and a consumer on 17 then gets
-// "requires at least JVM runtime version 21" or an UnsupportedClassVersionError. CI asserts the 61,
-// and resolves the plugin from mavenLocal on a 17 daemon, in .github/workflows/ci.yml.
+// AGP 9 supports JDK 17, so the plugin must load on a 17 daemon. Without a toolchain the bytecode
+// level is whatever JVM ran the build, and a consumer on 17 gets an UnsupportedClassVersionError.
+// CI asserts class-file major 61 and resolves from mavenLocal on a 17 daemon.
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
@@ -45,11 +42,9 @@ gradlePlugin {
     }
 }
 
-// Two builds of the same source have to produce the same jar. Without `includeEmptyDirs = false` a
-// warm build cache that predates the com.github -> io.github rename restores the now-empty
-// com/github/** directories into build/classes, the Jar task packages them, and the sha256 differs
-// from a build on a fresh machine. The other two already hold on Gradle 9.5 — entries come out dated
-// 1980-02-01 — and are pinned so a Gradle upgrade cannot flip them back.
+// Two builds of the same source must produce the same jar. `includeEmptyDirs` is the one that bites:
+// a warm cache restores empty directories left by a package rename and the Jar packages them. The
+// other two already hold on Gradle 9.5, and are pinned so an upgrade cannot flip them back.
 tasks.withType<Jar>().configureEach {
     includeEmptyDirs = false
     isPreserveFileTimestamps = false
@@ -58,9 +53,8 @@ tasks.withType<Jar>().configureEach {
 
 publishing {
     publications {
-        // `pluginMaven` is the publication `java-gradle-plugin` creates for the plugin itself; the
-        // `...PluginMarkerMaven` siblings are generated stubs that only redirect an id to it, and
-        // need no metadata. Both are added late, hence the lazy match rather than `named(...)`.
+        // `pluginMaven` is the plugin itself; the `...PluginMarkerMaven` siblings are stubs that
+        // only redirect an id to it. Both are added late, hence the lazy match over `named(...)`.
         withType<MavenPublication>().configureEach {
             if (name != "pluginMaven") return@configureEach
             pom {
@@ -93,10 +87,8 @@ publishing {
     }
 
     repositories {
-        // A second copy of every release, and somewhere for snapshots to go: the Gradle Plugin
-        // Portal, which `plugin-publish` above targets, is what consumers resolve from and it takes
-        // releases only. GitHub Packages needs a token even for public packages, so anyone reading
-        // from here has to supply credentials.
+        // A second copy of every release and somewhere for snapshots to go — the Portal takes
+        // releases only. Reading from here needs a token even though the package is public.
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/bleeding182/android-icon-banner")

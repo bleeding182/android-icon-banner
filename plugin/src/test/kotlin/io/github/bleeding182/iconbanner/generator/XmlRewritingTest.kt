@@ -21,8 +21,7 @@ class XmlRewritingTest {
 
     @Test
     fun `an unusual android namespace prefix is preserved`() {
-        // Nothing requires the prefix to be "android"; hard-coding it would emit attributes bound
-        // to no namespace, which aapt2 silently treats as unknown and drops.
+        // Hard-coding the prefix emits attributes bound to no namespace, which aapt2 ignores.
         val output = banner(
             """
             <vector xmlns:a="http://schemas.android.com/apk/res/android"
@@ -67,8 +66,7 @@ class XmlRewritingTest {
 
     @Test
     fun `input formatting does not leak into the output`() {
-        // Same document, three ways of writing it. Byte-identical output is what makes golden
-        // tests and Gradle's build cache trustworthy.
+        // Byte-identical output is what golden tests and the build cache rest on.
         val header = "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\""
         val compact = banner("$header android:viewportWidth=\"108\" android:viewportHeight=\"108\">" +
             "<path android:pathData=\"M0,0h1v1z\"/></vector>")

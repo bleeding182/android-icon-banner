@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates docs/preview-monochrome.gif: the themed (monochrome) icon cycling through three
+# Regenerates docs/preview-monochrome.webp: the themed (monochrome) icon cycling through three
 # system tints, showing that the banner text stays a genuine cutout whatever colour it is tinted.
 #
 # Requires python3, inkscape and imagemagick. See CLAUDE.md in this directory.
@@ -10,9 +10,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 cd "$root"
-./gradlew :app:assembleDevDebug -q
+./gradlew :app:assembleStagingDebug -q
 
-generated="app/build/generated/res/generateDevDebugIconBanner/drawable"
+generated="app/build/generated/res/generateStagingDebugIconBanner/drawable"
 mono="$(ls "$generated"/*_iconbanner_mono.xml 2>/dev/null | head -1 || true)"
 
 if [[ -z "$mono" ]]; then
@@ -34,7 +34,11 @@ for index in "${!tints[@]}"; do
 done
 
 mkdir -p docs
-# 60 hundredths of a second per frame.
-magick -delay 60 -loop 0 "${frames[@]}" -layers optimize docs/preview-monochrome.gif
+# Animated WebP, not GIF: the icon is masked to a circle, and GIF's one-bit alpha would snap every
+# antialiased pixel on that rim to fully opaque or fully gone. Lossless, because the artwork is flat
+# colour and the cutouts have to stay exactly transparent. 60 hundredths of a second per frame.
+magick -delay 60 -loop 0 "${frames[@]}" \
+    -define webp:lossless=true -define webp:alpha-quality=100 \
+    docs/preview-monochrome.webp
 
-echo "Wrote docs/preview-monochrome.gif"
+echo "Wrote docs/preview-monochrome.webp"

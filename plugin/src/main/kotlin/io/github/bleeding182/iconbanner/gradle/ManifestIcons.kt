@@ -11,19 +11,10 @@ import javax.xml.parsers.DocumentBuilderFactory
 internal data class DeclaredIcons(val icon: ResourceRef, val roundIcon: ResourceRef?, val roundIsFallback: Boolean) {
 
     /**
-     * The round icon actually worth bannering, or null.
+     * The round icon worth bannering, or null.
      *
-     * A declared one is passed through whatever it resolves to, so a broken declaration still fails
-     * loudly. An *invented* one — [roundIsFallback], nobody wrote `android:roundIcon` — is only a
-     * naming convention, and the plugin must not fail over a resource it made up itself. It is kept
-     * only when it resolves to at least one XML file, which is exactly the case the generator can
-     * handle.
-     *
-     * "Resolves to nothing" is not a strong enough test. An app with legacy per-density
-     * `ic_launcher_round.webp` files but no `mipmap-anydpi-v26/ic_launcher_round.xml` resolves
-     * non-empty, and the generator would then fail the build with "only raster files were found" over
-     * a resource nobody asked to be bannered — while the documented policy is that rasters are
-     * skipped in silence.
+     * A declared one is passed through, so a broken declaration still fails loudly. The conventional
+     * `ic_launcher_round` is only picked up when it actually exists.
      */
     fun roundIconToBanner(resources: ResourceLookup): ResourceRef? {
         val round = roundIcon ?: return null
