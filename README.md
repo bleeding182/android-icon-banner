@@ -10,7 +10,7 @@ launcher, in recents, or in app info. Mark the variants you choose; the rest sta
 ```kotlin
 plugins {
     id("com.android.application")
-    id("com.github.bleeding182.iconbanner") version "0.0.1-SNAPSHOT"
+    id("io.github.bleeding182.iconbanner") version "0.0.1-SNAPSHOT"
 }
 
 android {

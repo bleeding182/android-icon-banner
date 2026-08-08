@@ -1,16 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
-    id("com.github.bleeding182.iconbanner")
+    id("io.github.bleeding182.iconbanner")
 }
 
 android {
-    namespace = "com.github.bleeding182.android.iconbanner"
+    namespace = "io.github.bleeding182.android.iconbanner"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.github.bleeding182.android.iconbanner"
+        applicationId = "io.github.bleeding182.android.iconbanner"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

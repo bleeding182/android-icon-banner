@@ -1,7 +1,7 @@
 # Icon Banner Gradle Plugin
 
 Status: implemented
-Plugin id: `com.github.bleeding182.iconbanner`
+Plugin id: `io.github.bleeding182.iconbanner`
 
 ## Problem Statement
 

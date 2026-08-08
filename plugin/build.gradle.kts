@@ -3,7 +3,7 @@ plugins {
     id("com.gradle.plugin-publish") version "1.3.1"
 }
 
-group = "com.github.bleeding182"
+group = "io.github.bleeding182"
 // A release build passes -PpluginVersion=<tag without the leading v>; see .github/workflows/publish.yml.
 version = providers.gradleProperty("pluginVersion").getOrElse("0.0.1-SNAPSHOT")
 
@@ -23,8 +23,8 @@ gradlePlugin {
     vcsUrl = "https://github.com/bleeding182/android-icon-banner"
     plugins {
         create("iconBanner") {
-            id = "com.github.bleeding182.iconbanner"
-            implementationClass = "com.github.bleeding182.iconbanner.IconBannerPlugin"
+            id = "io.github.bleeding182.iconbanner"
+            implementationClass = "io.github.bleeding182.iconbanner.IconBannerPlugin"
             displayName = "Android Icon Banner"
             description = "Adds a per-variant banner to the Android launcher icon, so a dev build " +
                 "is distinguishable from production on a device that has both installed."
