@@ -234,7 +234,7 @@ android {
     color = "#FF0000"
     textColor = "#FFFFFF"
     corner = TOP_LEFT
-    height = 20
+    height = 20                   // superseded: now maxTextSize + lineHeight, see Geometry
     font = "Roboto Mono"
     weight = 700
   }
@@ -323,6 +323,52 @@ length budget is the chord across that safe zone rather than across the square. 
 instead of spilling. A banner nobody can read defeats the point of the plugin.
 
 Text is used verbatim. The browser generator force-uppercased; the plugin does not.
+
+Superseded before the first release, and the sizing model above is inverted rather than adjusted.
+`height` is gone; `maxTextSize` (cap height as a percentage of the edge) and `lineHeight` (band
+width as a multiple of the text size) replace it. Story 30's "one knob" is therefore two — but they
+are independent, which one knob plus auto-fit never was.
+
+What was wrong is visible in the numbers. Measured on the sample app — `height = 40`, Black Ops
+One, `"STAGING"`, a 108 viewport — the band came out 43.2 units wide with a text budget of 27.65
+units and a fitted cap height of **6.03**. The text used 22% of the vertical room it was given.
+Anything longer than about three characters is length-bound, never height-bound, so the band's
+thickness was mostly empty space, and worse: the text clearance was 0.18 of the *band width* at
+each end as well as above and below, so a thick band spent 27% of the chord it had on padding the
+text away from the ends. Deriving the band from the text instead — band width as the text size
+times the line height, padding as the leftover, end clearance as a fraction of the text's own cap
+height — makes the band hug the text and removes both problems. The demo case is now a 9.78-unit
+band around a 6.52 cap height: thinner band, larger text.
+
+The part of the original design that made this necessary rather than merely nicer is the anchoring.
+Pinning the ribbon's corner-side edge and letting the band grow inwards meant **band thickness was
+implicitly buying ribbon position**, and position is what sets the text's length budget: further
+in, the chord across the safe zone is longer. That was invisible while thickness was a user
+setting. It is fatal once thickness is derived from the text, because the dependency closes into a
+loop that runs the wrong way — long text shrinks, the band thins, the ribbon slides back towards
+the corner, the chord there is shorter, the text shrinks again. Solving that equilibrium for
+`"STAGING"` gives a 4.45-unit cap height, under 3dp on a launcher, worse than the model it was
+supposed to improve on.
+
+The fix is to stop the band width from carrying position: the band is now centred on a **fixed**
+line at 0.72 of the shorter edge from the corner, and grows symmetrically about it. 0.72 is set
+against the mask, but by a different criterion than the old 0.60 — worth recording, because the
+obvious one does not survive. Pinning the corner-side edge on the safe-zone rim, which is how 0.60
+was justified, now lands the centre line at 0.67, and the safe-zone chord there is short enough that
+`"STAGING"` solves to 3.6dp and trips the legibility floor. The safe zone is therefore a *lower*
+bound on how far in the line has to be, not the choice itself. The upper bound is the icon's middle:
+at 0.72 the band's inner edge sits `0.129 * s` from the centre and its corner-side edge `0.267 * s`,
+comfortably inside the 66dp safe zone, and `"STAGING"` solves to 6.5 units — 4.3dp. Further in keeps
+buying text room, but at 0.80 the inner edge is `0.073 * s` from the centre and the ribbon reads as
+a stripe across the artwork. That trade is why the constant is argued for in the code rather than
+tuned by eye.
+
+Two consequences worth recording. The circularity is gone entirely: with the centre line fixed, the
+length budget is independent of the text, so the size is one division and there is no solve to
+iterate. And there is no longer any knob that helps text that is too long — the length it competes
+for is fixed geometry — so the legibility warning stops suggesting one and says to shorten the text
+instead. `SAFE_ZONE_FRACTION` and the safe-zone chord are untouched; they were the fix for real
+on-device clipping and the geometry still keeps the text inside the safe zone.
 
 ### Failure policy
 

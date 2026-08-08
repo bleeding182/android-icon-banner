@@ -8,6 +8,10 @@ import kotlin.test.assertTrue
 /**
  * Geometry in isolation. The golden files cover how the ribbon looks in a real vector; these cover
  * the arithmetic, where an off-by-one in a corner table is invisible in a diff of glyph outlines.
+ *
+ * The default fixture leaves the text out, which is the case where the band reaches its full
+ * `maxTextSize * lineHeight`: 13% of 108 is a 14.04 cap height, so a 21.06 band centred on 77.76,
+ * running from 67.23 to 88.29.
  */
 class RibbonTest {
 
@@ -15,21 +19,71 @@ class RibbonTest {
         corner: BannerCorner,
         width: Double = 108.0,
         height: Double = 108.0,
-        heightPercent: Double = 20.0,
-    ) = Ribbon(width, height, corner, heightPercent)
+        maxTextSizePercent: Double = 13.0,
+        lineHeight: Double = 1.5,
+        textWidthPerCapHeight: Double? = null,
+    ) = Ribbon(width, height, corner, maxTextSizePercent, lineHeight, textWidthPerCapHeight)
 
     @Test
-    fun `reach places the corner-side edge, so height grows the band inwards`() {
-        // reach is the band's inner edge; the corner-side edge is reach - bandWidth and is what is
-        // actually anchored, so a thicker band never drifts out towards the masked-off corner.
-        assertEquals(0.60 * 108 + 21.6, ribbon(BannerCorner.TOP_LEFT).reach, 1e-9)
-        assertEquals(0.60 * 24 + 4.8, ribbon(BannerCorner.TOP_LEFT, width = 24.0, height = 24.0).reach, 1e-9)
+    fun `the centre line is a fixed fraction of the edge, whatever the band does`() {
+        // The property the whole redesign rests on: band width must not move the ribbon. If it does,
+        // sizing the band from the text feeds back into how much room the text has.
+        val thin = ribbon(BannerCorner.TOP_LEFT, maxTextSizePercent = 4.0)
+        val thick = ribbon(BannerCorner.TOP_LEFT, maxTextSizePercent = 20.0)
+        assertEquals(0.72 * 108, thin.centreLine, 1e-9)
+        assertEquals(0.72 * 108, thick.centreLine, 1e-9)
+        assertEquals(thin.pivotX, thick.pivotX, 1e-9)
+        assertEquals(thin.pivotY, thick.pivotY, 1e-9)
+        assertEquals(thin.textLengthBudget, thick.textLengthBudget, 1e-9)
     }
 
     @Test
-    fun `band width is the configured percentage of the shorter edge`() {
-        assertEquals(21.6, ribbon(BannerCorner.TOP_LEFT).bandWidth, 1e-9)
-        assertEquals(4.8, ribbon(BannerCorner.TOP_LEFT, width = 24.0, height = 24.0).bandWidth, 1e-9)
+    fun `the band is centred on that line and grows both ways`() {
+        val ribbon = ribbon(BannerCorner.TOP_LEFT)
+        assertEquals(21.06, ribbon.bandWidth, 1e-9)
+        assertEquals(77.76 + 10.53, ribbon.reach, 1e-9)
+        assertEquals(77.76 - 10.53, ribbon.cornerSideEdge, 1e-9)
+    }
+
+    @Test
+    fun `band width is the text size times the line height`() {
+        assertEquals(14.04, ribbon(BannerCorner.TOP_LEFT).textSize, 1e-9)
+        assertEquals(14.04 * 1.5, ribbon(BannerCorner.TOP_LEFT).bandWidth, 1e-9)
+        assertEquals(14.04 * 2.5, ribbon(BannerCorner.TOP_LEFT, lineHeight = 2.5).bandWidth, 1e-9)
+        // Normalised against the shorter edge, so the same setting looks the same on a 24 icon.
+        val small = ribbon(BannerCorner.TOP_LEFT, width = 24.0, height = 24.0)
+        assertEquals(24.0 * 0.13, small.textSize, 1e-9)
+        assertEquals(24.0 * 0.13 * 1.5, small.bandWidth, 1e-9)
+    }
+
+    @Test
+    fun `line height changes the band without changing the text`() {
+        val tight = ribbon(BannerCorner.TOP_LEFT, lineHeight = 1.0, textWidthPerCapHeight = 6.0)
+        val loose = ribbon(BannerCorner.TOP_LEFT, lineHeight = 2.0, textWidthPerCapHeight = 6.0)
+        assertEquals(tight.textSize, loose.textSize, 1e-9)
+        assertEquals(2 * tight.bandWidth, loose.bandWidth, 1e-9)
+        // Padding is not a knob of its own: it is whatever the line height left over.
+        assertEquals(0.0, tight.padding, 1e-9)
+        assertEquals(tight.textSize / 2, loose.padding, 1e-9)
+    }
+
+    @Test
+    fun `long text shrinks below maxTextSize and takes the band with it`() {
+        val short = ribbon(BannerCorner.TOP_LEFT, textWidthPerCapHeight = 1.5)
+        assertEquals(14.04, short.textSize, 1e-9)
+        assertEquals(14.04 * 1.5, short.bandWidth, 1e-9)
+
+        // Seven characters of a monospaced face, near enough: the length budget binds instead.
+        val long = ribbon(BannerCorner.TOP_LEFT, textWidthPerCapHeight = 5.6)
+        assertTrue(long.textSize < 14.04, "long text should not reach maxTextSize")
+        assertEquals(long.textLengthBudget / (5.6 + 2 * 0.3), long.textSize, 1e-9)
+        assertEquals(long.textSize * 1.5, long.bandWidth, 1e-9)
+        // The text plus the clearance at each end is exactly the budget, by construction.
+        assertEquals(
+            long.textLengthBudget,
+            long.textSize * 5.6 + 2 * long.endPadding,
+            1e-9,
+        )
     }
 
     @Test
@@ -37,14 +91,16 @@ class RibbonTest {
         // Same band on a tall icon as on a square one of the same width, so the setting stays
         // portable between projects with differently shaped foregrounds.
         val tall = ribbon(BannerCorner.TOP_LEFT, width = 108.0, height = 200.0)
-        assertEquals(86.4, tall.reach, 1e-9)
-        assertEquals(21.6, tall.bandWidth, 1e-9)
+        val square = ribbon(BannerCorner.TOP_LEFT)
+        assertEquals(square.reach, tall.reach, 1e-9)
+        assertEquals(square.bandWidth, tall.bandWidth, 1e-9)
+        assertEquals(square.textLengthBudget, tall.textLengthBudget, 1e-9)
     }
 
     @Test
     fun `top left quad runs from the x axis to the y axis`() {
         assertEquals(
-            "M 86.4 0 L 0 86.4 L 0 64.8 L 64.8 0 Z",
+            "M 88.29 0 L 0 88.29 L 0 67.23 L 67.23 0 Z",
             ribbon(BannerCorner.TOP_LEFT).quadPathData(),
         )
     }
@@ -52,7 +108,7 @@ class RibbonTest {
     @Test
     fun `top right quad is mirrored into the right edge`() {
         assertEquals(
-            "M 21.6 0 L 108 86.4 L 108 64.8 L 43.2 0 Z",
+            "M 19.71 0 L 108 88.29 L 108 67.23 L 40.77 0 Z",
             ribbon(BannerCorner.TOP_RIGHT).quadPathData(),
         )
     }
@@ -60,7 +116,7 @@ class RibbonTest {
     @Test
     fun `bottom left quad is mirrored into the bottom edge`() {
         assertEquals(
-            "M 0 21.6 L 86.4 108 L 64.8 108 L 0 43.2 Z",
+            "M 0 19.71 L 88.29 108 L 67.23 108 L 0 40.77 Z",
             ribbon(BannerCorner.BOTTOM_LEFT).quadPathData(),
         )
     }
@@ -68,7 +124,7 @@ class RibbonTest {
     @Test
     fun `bottom right quad is mirrored into both edges`() {
         assertEquals(
-            "M 21.6 108 L 108 21.6 L 108 43.2 L 43.2 108 Z",
+            "M 19.71 108 L 108 19.71 L 108 40.77 L 40.77 108 Z",
             ribbon(BannerCorner.BOTTOM_RIGHT).quadPathData(),
         )
     }
@@ -84,45 +140,59 @@ class RibbonTest {
     }
 
     @Test
-    fun `pivot is the centre of the band`() {
+    fun `pivot is on the centre line`() {
         val topLeft = ribbon(BannerCorner.TOP_LEFT)
-        assertEquals(37.8, topLeft.pivotX, 1e-9)
-        assertEquals(37.8, topLeft.pivotY, 1e-9)
+        assertEquals(77.76 / 2, topLeft.pivotX, 1e-9)
+        assertEquals(77.76 / 2, topLeft.pivotY, 1e-9)
 
         val bottomRight = ribbon(BannerCorner.BOTTOM_RIGHT)
-        assertEquals(108.0 - 37.8, bottomRight.pivotX, 1e-9)
-        assertEquals(108.0 - 37.8, bottomRight.pivotY, 1e-9)
+        assertEquals(108.0 - 77.76 / 2, bottomRight.pivotX, 1e-9)
+        assertEquals(108.0 - 77.76 / 2, bottomRight.pivotY, 1e-9)
     }
 
     @Test
-    fun `text budget leaves padding on every side`() {
+    fun `the text length budget is the safe-zone chord`() {
         val ribbon = ribbon(BannerCorner.TOP_LEFT)
-        val padding = 0.18 * 21.6
-        assertEquals(21.6 - 2 * padding, ribbon.availableTextHeight, 1e-9)
-        // The safe-zone chord, not the square one: the square would let text run past the mask.
-        val centreLine = 86.4 - 10.8
-        val offset = (108.0 - centreLine) / Math.sqrt(2.0)
+        // The chord across the safe zone, not across the square: the square would let text run past
+        // the mask, which is what sheared the first and last glyphs off on a real device.
+        val offset = (108.0 - 77.76) / Math.sqrt(2.0)
         val acrossSafeZone = 2 * Math.sqrt(33.0 * 33.0 - offset * offset)
-        assertTrue(acrossSafeZone < centreLine * Math.sqrt(2.0), "the safe zone should be the tighter limit")
-        assertEquals(acrossSafeZone - 2 * padding, ribbon.availableTextLength, 1e-9)
+        assertEquals(acrossSafeZone, ribbon.textLengthBudget, 1e-9)
+        assertTrue(
+            acrossSafeZone < 77.76 * Math.sqrt(2.0),
+            "the safe zone should be far tighter than the chord across the square",
+        )
+    }
+
+    @Test
+    fun `the whole band stays inside the safe zone at the default style`() {
+        // The criterion CENTRE_LINE_FRACTION was chosen against: a launcher masks the icon, and an
+        // edge outside the safe zone means the band renders thinner than it was asked to be.
+        val ribbon = ribbon(BannerCorner.TOP_LEFT)
+        val safeRadius = Ribbon.SAFE_ZONE_FRACTION * 108.0
+        val cornerSideOffset = (108.0 - ribbon.cornerSideEdge) / Math.sqrt(2.0)
+        assertTrue(cornerSideOffset < safeRadius, "corner-side edge at $cornerSideOffset is outside the safe zone")
+        // And the other half of the trade: it does not run through the middle of the icon either.
+        val innerOffset = (108.0 - ribbon.reach) / Math.sqrt(2.0)
+        assertTrue(innerOffset > 0.10 * 108.0, "inner edge at $innerOffset all but covers the icon's centre")
     }
 
     @Test
     fun `inverse clip is the corner triangle plus the rest of the icon`() {
         assertEquals(
-            "M 0 0 L 64.8 0 L 0 64.8 Z M 86.4 0 L 108 0 L 108 108 L 0 108 L 0 86.4 Z",
+            "M 0 0 L 67.23 0 L 0 67.23 Z M 88.29 0 L 108 0 L 108 108 L 0 108 L 0 88.29 Z",
             ribbon(BannerCorner.TOP_LEFT).inverseClipPathData(),
         )
         assertEquals(
-            "M 108 0 L 43.2 0 L 108 64.8 Z M 21.6 0 L 0 0 L 0 108 L 108 108 L 108 86.4 Z",
+            "M 108 0 L 40.77 0 L 108 67.23 Z M 19.71 0 L 0 0 L 0 108 L 108 108 L 108 88.29 Z",
             ribbon(BannerCorner.TOP_RIGHT).inverseClipPathData(),
         )
         assertEquals(
-            "M 0 108 L 64.8 108 L 0 43.2 Z M 0 21.6 L 0 0 L 108 0 L 108 108 L 86.4 108 Z",
+            "M 0 108 L 67.23 108 L 0 40.77 Z M 0 19.71 L 0 0 L 108 0 L 108 108 L 88.29 108 Z",
             ribbon(BannerCorner.BOTTOM_LEFT).inverseClipPathData(),
         )
         assertEquals(
-            "M 108 108 L 43.2 108 L 108 43.2 Z M 21.6 108 L 0 108 L 0 0 L 108 0 L 108 21.6 Z",
+            "M 108 108 L 40.77 108 L 108 40.77 Z M 19.71 108 L 0 108 L 0 0 L 108 0 L 108 19.71 Z",
             ribbon(BannerCorner.BOTTOM_RIGHT).inverseClipPathData(),
         )
     }

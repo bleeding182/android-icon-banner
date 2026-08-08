@@ -9,11 +9,11 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Text auto-fitted into a ribbon: the finished `pathData` plus the size it ended up at.
+ * Text drawn into a ribbon: the finished `pathData` plus the size it ended up at.
  *
- * [capHeight] is in the target vector's own viewport units, and is what the auto-fit produced rather
- * than what was asked for — the caller has no other way to notice that the fit shrank the text past
- * readability.
+ * [capHeight] is in the target vector's own viewport units, and is what the glyphs actually measure
+ * at the size the geometry settled on rather than what was asked for — the caller has no other way
+ * to notice that a long text shrank past readability.
  */
 internal data class FittedText(val pathData: String, val capHeight: Double)
 
@@ -50,8 +50,30 @@ internal class BannerText(fontFile: File) {
     }
 
     /**
-     * The text outline auto-fitted to the band, centred on the pivot and rotated into place, with
-     * every transform baked into the coordinates, plus the size the fit settled on.
+     * The text's natural width per unit of cap height, or null when there is nothing to draw.
+     *
+     * The one number the geometry needs from the font before any of it exists. The band is derived
+     * from the text, so [Ribbon] has to know the text's proportions to work out what size it can be
+     * drawn at — and this is scale-free, so measuring it once at the reference size is enough.
+     *
+     * "Cap height" is really the ink height of this particular string: for `"dev"` it is the
+     * ascender of the `d`, and for all-caps text it is the cap height proper. That is the number the
+     * band is sized against either way, so the two agree.
+     */
+    fun naturalWidthPerCapHeight(text: String): Double? {
+        if (text.isEmpty()) return null
+        val bounds = outlineAt(text, REFERENCE_SIZE).bounds2D
+        if (bounds.width <= 0.0 || bounds.height <= 0.0) return null
+        return bounds.width / bounds.height
+    }
+
+    /**
+     * The text outline drawn at the band's [Ribbon.textSize], centred on the pivot and rotated into
+     * place, with every transform baked into the coordinates, plus the size it settled on.
+     *
+     * No fitting happens here any more: [Ribbon] has already solved the size from
+     * [naturalWidthPerCapHeight], so this only has to hit it. All this needs from the reference
+     * measurement is the scale that turns its ink height into [Ribbon.textSize].
      *
      * The transform is baked rather than emitted as a `<group android:rotation="...">` because the
      * monochrome output needs the ribbon and the text to share one `<path>` element so even-odd
@@ -63,13 +85,10 @@ internal class BannerText(fontFile: File) {
     fun fit(text: String, ribbon: Ribbon): FittedText? {
         if (text.isEmpty()) return null
 
-        val reference = outlineAt(text, REFERENCE_SIZE)
-        val referenceBounds = reference.bounds2D
+        val referenceBounds = outlineAt(text, REFERENCE_SIZE).bounds2D
         if (referenceBounds.width <= 0.0 || referenceBounds.height <= 0.0) return null
 
-        val heightScale = ribbon.availableTextHeight / referenceBounds.height
-        val lengthScale = ribbon.availableTextLength / referenceBounds.width
-        val scale = minOf(heightScale, lengthScale)
+        val scale = ribbon.textSize / referenceBounds.height
         if (!scale.isFinite() || scale <= 0.0) return null
 
         // Re-derive at the final size rather than scaling the reference outline: hinting and

@@ -45,7 +45,10 @@ abstract class IconBannerGenerateTask : DefaultTask() {
     abstract val corner: Property<BannerCorner>
 
     @get:Input
-    abstract val height: Property<Int>
+    abstract val maxTextSize: Property<Int>
+
+    @get:Input
+    abstract val lineHeight: Property<Double>
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -88,12 +91,17 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         val declared = ManifestIcons.read(manifestFiles.get().map { it.asFile })
         val roundIcon = declared.roundIconToBanner(resources)
 
+        val maxTextSizeValue = maxTextSize.get()
+        val lineHeightValue = lineHeight.get()
+        BannerTextSize.check(maxTextSizeValue, lineHeightValue, variant)
+
         val style = BannerStyle(
             text = text.get(),
             color = ColorFormat.check(color.get(), "color", variant),
             textColor = ColorFormat.check(textColor.get(), "textColor", variant),
             corner = corner.get(),
-            heightPercent = BannerHeight.check(height.get(), variant).toDouble(),
+            maxTextSizePercent = maxTextSizeValue.toDouble(),
+            lineHeight = lineHeightValue,
         )
 
         val output = outputDirectory.get().asFile

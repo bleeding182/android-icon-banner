@@ -9,7 +9,18 @@ internal object BannerDefaults {
     const val COLOR = "#FF0000"
     const val TEXT_COLOR = "#FFFFFF"
     val CORNER = BannerCorner.TOP_LEFT
-    const val HEIGHT = 20
+
+    /**
+     * Cap height as a percentage of the icon's shorter edge, and the band as a multiple of it.
+     *
+     * Chosen for continuity with the single band-width knob these replaced: its default of 20
+     * produced a 21.6-unit band on a 108 icon with 13.8 units of that available to the text, a ratio
+     * of 1.56. 13 and 1.5 put a 14.04-unit cap height in a 21.06-unit band, so short text and the
+     * band around it both come out within about 2% of where they used to be.
+     */
+    const val MAX_TEXT_SIZE = 13
+    const val LINE_HEIGHT = 1.5
+
     const val FONT = "Roboto Mono"
     const val WEIGHT = 700
     const val ITALIC = false
@@ -24,7 +35,8 @@ internal class ResolvedBanner(
     val color: Provider<String>,
     val textColor: Provider<String>,
     val corner: Provider<BannerCorner>,
-    val height: Provider<Int>,
+    val maxTextSize: Provider<Int>,
+    val lineHeight: Provider<Double>,
     val fontFamily: Provider<String>,
     val fontWeight: Provider<Int>,
     val fontItalic: Provider<Boolean>,
@@ -47,7 +59,8 @@ internal fun mergeBanner(sources: List<IconBannerDsl>): ResolvedBanner? {
         color = merge(sources, BannerDefaults.COLOR) { it.color },
         textColor = merge(sources, BannerDefaults.TEXT_COLOR) { it.textColor },
         corner = merge(sources, BannerDefaults.CORNER) { it.corner },
-        height = merge(sources, BannerDefaults.HEIGHT) { it.height },
+        maxTextSize = merge(sources, BannerDefaults.MAX_TEXT_SIZE) { it.maxTextSize },
+        lineHeight = merge(sources, BannerDefaults.LINE_HEIGHT) { it.lineHeight },
         fontFamily = merge(sources, BannerDefaults.FONT) { it.font },
         fontWeight = merge(sources, BannerDefaults.WEIGHT) { it.weight },
         fontItalic = merge(sources, BannerDefaults.ITALIC) { it.italic },

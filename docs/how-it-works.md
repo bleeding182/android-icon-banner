@@ -33,16 +33,29 @@ requests.
 ## Geometry
 
 A launcher masks the icon to a circle, squircle or teardrop of its choosing, so a banner placed
-against the full 108dp canvas gets sheared off at the rim. Two separate constants keep it inside:
+against the full 108dp canvas gets sheared off at the rim. Two constants keep it inside:
 
-- The band's corner-side edge sits at a fixed fraction of the icon (0.60), chosen against the
-  narrowest mask a launcher is likely to apply.
-- The **text length** budget is clamped to the adaptive-icon safe zone — the 66dp circle of the
-  108dp canvas — so long text shrinks rather than running out under the mask.
+- The band's **centre line** sits at a fixed fraction of the icon — 0.72 of the shorter edge,
+  measured along each axis from the corner — chosen so that at the default style the band's
+  corner-side edge still lands inside the narrowest mask a launcher is likely to apply, while the
+  inner edge stays clear of the middle of the icon.
+- The **text length** budget is the chord of that centre line across the adaptive-icon safe zone —
+  the 66dp circle of the 108dp canvas — so long text shrinks rather than running out under the mask.
 
-`height` is the width of the band, as a percentage of the icon's shorter viewport edge; the band
-runs diagonally, so its "height" is the distance across it. Text is centred and scaled to fit the
-length that remains, which is why there is no font-size knob.
+Everything else follows from the text. `maxTextSize` is the cap height the text would like to be,
+as a percentage of the icon's shorter viewport edge; the text is drawn at that size, or smaller if
+the length budget cannot take it. The band is then `lineHeight` times whatever the text ended up
+as, so it hugs the text instead of the text rattling around inside it, and the clearance above and
+below the glyphs is simply what `lineHeight` left over. There is no font-size knob and no separate
+padding knob.
+
+The band's position is deliberately *not* derived from its width. It used to be — the band was
+anchored on its corner-side edge and grew inwards — and that quietly made the band width buy ribbon
+position: a thicker band sat further in, where the chord across the safe zone is longer, so it also
+bought text room. Sizing the band from the text with that coupling in place runs the loop backwards
+and collapses: smaller text, thinner band, band drifts towards the corner, chord shortens, smaller
+text again. Pinning the centre line breaks the loop, and the length budget then no longer depends
+on the text at all, so the size is a division rather than a search.
 
 ## Themed icons
 
@@ -87,7 +100,9 @@ The build fails if the chosen font has no glyph for a character in the banner te
 rendering a row of tofu.
 
 The rendered glyph outlines are embedded in your app as path data — the font file itself is not
-shipped. Google Fonts are typically OFL-licensed, so check the licence of any family you ship.
+shipped. Under the OFL that path data is not Font Software and you owe nothing for it; the README's
+[Fonts and licensing](../README.md#fonts-and-licensing) section has the detail, including the
+Apache-2.0 families where the question is less settled.
 
 ## Raster icons
 

@@ -44,7 +44,8 @@ android {
         color = "#FF0000"
         textColor = "#FFFFFF"
         corner = topLeft
-        height = 20
+        maxTextSize = 13
+        lineHeight = 1.5
         font = "Roboto Mono"
         weight = 700
     }
@@ -63,16 +64,19 @@ android {
 | `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` reference. Not `?attr/…` — a launcher inflates the icon without a theme. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
 | `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
-| `height` | `Int` | `20` | Width of the band across the diagonal, as a percentage of the icon's shorter edge. `1..40`; above that the band would reach past the icon's corner. The only size knob; text auto-fits. |
+| `maxTextSize` | `Int` | `13` | Largest the text may be: its cap height as a percentage of the icon's shorter edge. An upper bound — text too long to fit across the ribbon is drawn smaller. `1..20` at the default `lineHeight`. |
+| `lineHeight` | `Double` | `1.5` | Band width as a multiple of the text's cap height. The band is sized from the text, so this is what makes the ribbon chunkier or tighter; it never changes the text. `1.0..3.0`. |
 | `font` | `String` | `Roboto Mono` | Any Google Fonts family, downloaded on first use and cached. |
 | `weight` | `Int` | `700` | Must be a weight the family actually offers. |
 | `italic` | `Boolean` | `false` | |
 
 `corner` takes the bare names above in both Kotlin and Groovy, with no import.
 
-**Keep the text short.** It is scaled to fit the band, and a launcher icon is small: about six
-characters stay comfortably readable at the default `height`, and eleven are legible on a monitor but
-not on a phone. The build warns when the fitted text drops below a readable size. Latin, left-to-right
+**Keep the text short.** The band is sized from the text, but the *length* it has to fit across is
+fixed by the icon's mask, so long text is drawn smaller — and a launcher icon is small to begin
+with. About seven characters stay comfortably readable, and eleven are legible on a monitor but not
+on a phone. The build warns when the text drops below a readable size; raising `maxTextSize` will
+not help in that case, because the length, not the setting, is what ran out. Latin, left-to-right
 text only.
 
 ### Precedence

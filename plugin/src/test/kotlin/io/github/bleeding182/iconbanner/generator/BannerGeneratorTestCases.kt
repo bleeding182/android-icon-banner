@@ -81,6 +81,31 @@ abstract class BannerGeneratorTestCases {
     }
 
     @Test
+    fun `the monochrome clip is the complement of the band that was drawn`() {
+        // Both outputs size their band from the same text, but they derive their paths separately —
+        // the quad for the coloured layer, the inverse clip and the punched path for the monochrome
+        // one. If those ever disagree the punched region no longer matches the band, and the icon's
+        // own artwork bleeds into the ribbon or a strip of the ribbon goes missing.
+        val files = adaptiveIcon(style(text = "STAGING")).files
+        val coloured = files.getValue(FOREGROUND_PATH)
+        val monochrome = files.getValue(MONO_PATH)
+
+        // The punched path is the coloured layer's exact quad, with the glyphs appended as holes.
+        assertTrue("android:pathData=\"${quadPathOf(coloured)} M " in monochrome, monochrome)
+
+        // And the clip is its complement: every coordinate in it is either the icon's own edge or
+        // one of the band's two edges, so the clip cannot cut into or fall short of the band.
+        val clip = Regex("<clip-path android:pathData=\"([^\"]+)\"").find(monochrome)
+            ?: error("No clip path in $monochrome")
+        assertEquals(
+            quadPointsOf(coloured).flatMap { listOf(it.first, it.second) }.toSortedSet(),
+            textPoints(clip.groupValues[1]).flatMap { listOf(it.first, it.second) }
+                .filter { it != 108.0 }
+                .toSortedSet(),
+        )
+    }
+
+    @Test
     fun `monochrome wrap leaves existing groups and clip paths intact`() {
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
@@ -93,35 +118,51 @@ abstract class BannerGeneratorTestCases {
     // ------------------------------------------------------------------- text
 
     @Test
-    fun `short text is scaled to the band height`() {
-        assertMatchesGolden("text_short.xml", plainVector(style(text = "QA")))
+    fun `short text reaches maxTextSize and the band is sized to it`() {
+        val output = plainVector(style(text = "QA"))
+        assertMatchesGolden("text_short.xml", output)
+        // Two characters have length to spare, so the text is exactly as large as it was allowed to
+        // be and the band is exactly that times the line height.
+        assertEquals(13.0 / 100.0 * 108.0 * 1.5, bandWidthOf(output), 0.01)
     }
 
     @Test
-    fun `long text is scaled down to fit the band length`() {
-        assertMatchesGolden("text_long.xml", plainVector(style(text = "STAGING RC1")))
+    fun `long text is scaled down and the band narrows with it`() {
+        val output = plainVector(style(text = "STAGING RC1"))
+        assertMatchesGolden("text_long.xml", output)
+        // The point of deriving the band from the text: eleven characters do not fit at the size
+        // asked for, so both the text and the band around it come out smaller.
+        val full = 13.0 / 100.0 * 108.0 * 1.5
+        assertTrue(bandWidthOf(output) < full, "the band should have narrowed from $full")
     }
 
     @Test
-    fun `auto-fitted text always stays inside the band`() {
+    fun `lineHeight thickens the band without touching the text`() {
+        // The two knobs are meant to be independent: maxTextSize sizes the text, lineHeight only
+        // decides how much band is wrapped around it. "DEV" reaches maxTextSize either way, so the
+        // glyph path has to come out byte-identical.
+        val tight = plainVector(style(lineHeight = 1.0))
+        val loose = plainVector(style(lineHeight = 2.0))
+        assertEquals(glyphPathOf(tight), glyphPathOf(loose))
+        assertEquals(13.0 / 100.0 * 108.0, bandWidthOf(tight), 0.01)
+        assertEquals(2 * 13.0 / 100.0 * 108.0, bandWidthOf(loose), 0.01)
+    }
+
+    @Test
+    fun `the text always stays inside the band`() {
         // The golden files pin the exact outline but would not obviously flag text that has spilled
-        // over the ribbon edge. This checks the property the auto-fit exists to guarantee, for both
-        // the height-constrained and the length-constrained case, in every corner.
+        // over the ribbon edge. This checks the property the sizing exists to guarantee, for both
+        // the size-bound and the length-bound case, in every corner.
         // Derived, not hardcoded: retuning the ribbon's position should not need this edited.
-        val cornerEdge = Ribbon.CORNER_EDGE_FRACTION * 108.0
-        val band = cornerEdge..(cornerEdge + style().heightPercent / 100.0 * 108.0)
         BannerCorner.entries.forEach { corner ->
             listOf("QA", "DEV", "STAGING RC1").forEach { text ->
                 val output = plainVector(style(text = text, corner = corner))
-                val glyphs = Regex("android:pathData=\"(M [^\"]*Q[^\"]*)\"").find(output)
-                    ?: error("No glyph path found for \"$text\" in $corner")
-                textPoints(glyphs.groupValues[1]).forEach { (x, y) ->
-                    val across = when (corner) {
-                        BannerCorner.TOP_LEFT -> x + y
-                        BannerCorner.TOP_RIGHT -> (108.0 - x) + y
-                        BannerCorner.BOTTOM_LEFT -> x + (108.0 - y)
-                        BannerCorner.BOTTOM_RIGHT -> (108.0 - x) + (108.0 - y)
-                    }
+                // The band the generator actually drew, not one re-derived from the geometry: the
+                // question is whether the text landed inside that quad.
+                val edges = quadPointsOf(output).map { (x, y) -> across(corner, x, y) }
+                val band = edges.min()..edges.max()
+                textPoints(glyphPathOf(output)).forEach { (x, y) ->
+                    val across = across(corner, x, y)
                     assertTrue(
                         across in band,
                         "\"$text\" in $corner reaches $across across the band at ($x, $y)",
@@ -131,16 +172,11 @@ abstract class BannerGeneratorTestCases {
         }
     }
 
-    private fun textPoints(pathData: String): List<Pair<Double, Double>> =
-        Regex("(-?[\\d.]+) (-?[\\d.]+)").findAll(pathData)
-            .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
-            .toList()
-
     @Test
     fun `text squeezed past readability warns without failing`() {
-        // The auto-fit has no floor: eleven characters in a band sized for three still "fit", at a
-        // cap height of about 4.6 of 108 — roughly 3dp on a launcher icon, which is a smear. Only
-        // the user can decide whether that text is worth the size, so this warns rather than fails.
+        // The fit has no floor: eleven characters in the length of three still "fit", at a cap
+        // height of about 5.4 of 108 — roughly 3.6dp on a launcher icon, which is a smear. Only the
+        // user can decide whether that text is worth the size, so this warns rather than fails.
         val result = generate(
             request(
                 FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
@@ -153,8 +189,10 @@ abstract class BannerGeneratorTestCases {
         assertTrue("STAGING RC1" in warning, warning)
         assertTrue("11 characters" in warning, warning)
         // The size it landed at, and what that means on a device, both in the message.
-        assertTrue("4.5" in warning || "4.6" in warning, warning)
+        assertTrue("5.4" in warning, warning)
         assertTrue("dp" in warning, warning)
+        // No knob is suggested: the length it ran out of is fixed geometry, so there is none.
+        assertTrue("shorter text" in warning, warning)
         assertTrue(result.files.isNotEmpty(), "the banner should still have been generated")
     }
 
@@ -168,7 +206,7 @@ abstract class BannerGeneratorTestCases {
                     icon = DRAWABLE_ICON,
                 )
             ).success()
-            assertEquals(emptyList(), result.warnings, "\"$text\" should be legible at the default height")
+            assertEquals(emptyList(), result.warnings, "\"$text\" should be legible at the default style")
         }
     }
 
@@ -210,7 +248,7 @@ abstract class BannerGeneratorTestCases {
     // --------------------------------------------------------------- viewport
 
     @Test
-    fun `height normalises against a non-default viewport`() {
+    fun `the banner normalises against a non-default viewport`() {
         val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground_24.xml"))
         val files = generate(request(resources, style(), icon = DRAWABLE_ICON)).success().files
         assertMatchesGolden("viewport_24.xml", files.getValue("drawable/ic_launcher.xml"))
@@ -368,6 +406,42 @@ abstract class BannerGeneratorTestCases {
     // ---------------------------------------------------------------- helpers
 
     private fun input(name: String) = readTestResource("input/$name")
+
+    /** Every coordinate pair in a `pathData` string, in order. */
+    private fun textPoints(pathData: String): List<Pair<Double, Double>> =
+        Regex("(-?[\\d.]+) (-?[\\d.]+)").findAll(pathData)
+            .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+            .toList()
+
+    /** The ribbon quad's `pathData`, picked out by the fill [style] asked for. */
+    private fun quadPathOf(output: String): String =
+        Regex("android:fillColor=\"#FFE91E63\"\\s+android:pathData=\"([^\"]+)\"").find(output)
+            ?.groupValues?.get(1)
+            ?: error("No ribbon quad in $output")
+
+    private fun quadPointsOf(output: String): List<Pair<Double, Double>> = textPoints(quadPathOf(output))
+
+    /** The text outline's `pathData`: the one path carrying curve segments. */
+    private fun glyphPathOf(output: String): String =
+        Regex("android:pathData=\"(M [^\"]*Q[^\"]*)\"").find(output)?.groupValues?.get(1)
+            ?: error("No glyph path in $output")
+
+    /**
+     * How far across the corner diagonal a point sits — the axis the band's width is measured along,
+     * so the band is a plain interval in it.
+     */
+    private fun across(corner: BannerCorner, x: Double, y: Double): Double = when (corner) {
+        BannerCorner.TOP_LEFT -> x + y
+        BannerCorner.TOP_RIGHT -> (108.0 - x) + y
+        BannerCorner.BOTTOM_LEFT -> x + (108.0 - y)
+        BannerCorner.BOTTOM_RIGHT -> (108.0 - x) + (108.0 - y)
+    }
+
+    /** The width of the band actually drawn, read back off the quad. */
+    private fun bandWidthOf(output: String, corner: BannerCorner = BannerCorner.TOP_LEFT): Double {
+        val edges = quadPointsOf(output).map { (x, y) -> across(corner, x, y) }
+        return edges.max() - edges.min()
+    }
 
     /** Banners `foreground.xml` as a plain `<vector>` launcher icon and returns the one output. */
     private fun plainVector(style: BannerStyle): String {

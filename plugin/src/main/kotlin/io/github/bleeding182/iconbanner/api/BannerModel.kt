@@ -34,8 +34,13 @@ internal data class BannerStyle(
     /** Text fill, same accepted forms as [color]. */
     val textColor: String,
     val corner: BannerCorner,
-    /** Ribbon band width as a percentage of the icon's edge length. */
-    val heightPercent: Double,
+    /**
+     * Cap height the text is drawn at, as a percentage of the icon's edge length. An upper bound:
+     * text too long for the ribbon is drawn smaller.
+     */
+    val maxTextSizePercent: Double,
+    /** Ribbon band width as a multiple of the text's cap height, so the band hugs the text. */
+    val lineHeight: Double,
 )
 
 /** An Android resource reference, e.g. `@mipmap/ic_launcher` becomes `ResourceRef("mipmap", "ic_launcher")`. */

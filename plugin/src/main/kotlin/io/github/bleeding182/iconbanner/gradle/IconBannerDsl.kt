@@ -77,8 +77,23 @@ abstract class IconBannerDsl @Inject constructor(objects: ObjectFactory) {
     /** Which corner the ribbon occupies. */
     abstract val corner: Property<BannerCorner>
 
-    /** Ribbon band width as a percentage of the icon's edge length. */
-    abstract val height: Property<Int>
+    /**
+     * How large the text may be: its cap height as a percentage of the icon's shorter edge.
+     *
+     * An upper bound, not a size. The band is sized *from* the text, so this is the size short text
+     * settles at; text too long to fit across the ribbon is drawn smaller and the band thins with
+     * it. Raising this therefore does nothing for text that is already length-bound.
+     */
+    abstract val maxTextSize: Property<Int>
+
+    /**
+     * Band width as a multiple of the text's cap height.
+     *
+     * The only way to change the band's thickness, and it changes nothing about the text: at 1 the
+     * band is exactly the height of the glyphs, and the surplus above that becomes clearance above
+     * and below them.
+     */
+    abstract val lineHeight: Property<Double>
 
     /** Google Fonts family name, e.g. `Roboto Mono`. */
     abstract val font: Property<String>

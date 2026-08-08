@@ -24,7 +24,13 @@ android {
         color = "#FF0000"
         textColor = "#FFFFFF"
         corner = bottomRight
-        height = 40
+        // "STAGING" is seven characters, so the chord across the icon's safe zone — not
+        // maxTextSize — is what sets the text size: about 6.5 units of 108, or 4.3dp on a launcher,
+        // just clear of the legibility warning. The line height is non-default on purpose, so the
+        // visual check would notice the setting being dropped on the way to the generator: looser
+        // than the default 1.5 gives the band 11.7 units around that text, which reads better here.
+        maxTextSize = 13
+        lineHeight = 1.8
         font = "Black Ops One"
         weight = 400
     }

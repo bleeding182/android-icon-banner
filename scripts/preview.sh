@@ -32,6 +32,6 @@ done
 
 mkdir -p docs
 magick montage "$work/prod.png" "$work/dev.png" "$work/full.png" \
-    -tile 3x1 -geometry +10+10 -background white docs/preview.png
+    -tile 3x1 -geometry +10+10 -background none docs/preview.png
 
 echo "Wrote docs/preview.png"

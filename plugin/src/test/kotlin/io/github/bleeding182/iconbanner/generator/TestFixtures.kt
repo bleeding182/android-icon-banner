@@ -59,13 +59,15 @@ internal class FakeResources : ResourceLookup {
         files[ref]?.reversed().orEmpty()
 }
 
+/** The documented defaults, so a golden file shows what an ordinary project actually gets. */
 internal fun style(
     text: String = "DEV",
     color: String = "#FFE91E63",
     textColor: String = "#FFFFFFFF",
     corner: BannerCorner = BannerCorner.TOP_LEFT,
-    heightPercent: Double = 20.0,
-): BannerStyle = BannerStyle(text, color, textColor, corner, heightPercent)
+    maxTextSizePercent: Double = 13.0,
+    lineHeight: Double = 1.5,
+): BannerStyle = BannerStyle(text, color, textColor, corner, maxTextSizePercent, lineHeight)
 
 internal fun request(
     resources: FakeResources,

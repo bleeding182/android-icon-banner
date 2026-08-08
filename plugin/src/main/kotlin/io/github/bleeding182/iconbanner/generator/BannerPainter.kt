@@ -96,10 +96,10 @@ internal class BannerPainter(
     }
 
     /**
-     * The fitted text's `pathData`, warning first if the auto-fit had to shrink it past readability.
+     * The text's `pathData`, warning first if the ribbon's length forced it past readability.
      *
-     * The fit has no floor — it will happily squeeze eleven characters into a band sized for three —
-     * and the result is a wedge of colour with an unreadable smear in it. That is not worth failing a
+     * The fit has no floor — it will happily squeeze eleven characters into the length of three —
+     * and the result is a band of colour with an unreadable smear in it. That is not worth failing a
      * build over, because only the user can say whether their text is worth the size, but it is
      * worth saying out loud: the banner exists to be read.
      */
@@ -109,11 +109,18 @@ internal class BannerPainter(
         if (onScreenDp < MIN_LEGIBLE_CAP_HEIGHT_DP) {
             // Two decimals on the dp figure, not one: at the threshold, %.1f rounds 3.98 to "4.0"
             // and the message then reads as though 4dp were below a 4dp minimum.
+            //
+            // No knob is suggested, deliberately. The length the text is competing for is the chord
+            // across the icon's safe zone, which is fixed geometry: iconBanner.maxTextSize is an
+            // upper bound and raising it changes nothing here, and lineHeight only thickens the band
+            // around text that is already too small. Shorter text, or a narrower face, is the whole
+            // list of things that helps.
             warnings += String.format(
                 Locale.ROOT,
                 "The banner text \"%s\" (%d characters) had to be shrunk to a cap height of %.2f in a " +
-                    "%.0f viewport to fit the ribbon — about %.2fdp on a launcher icon, under the " +
-                    "%.0fdp needed to stay readable. Use shorter text, or a larger iconBanner.height.",
+                    "%.0f viewport to fit across the ribbon — about %.2fdp on a launcher icon, under " +
+                    "the %.0fdp needed to stay readable. The ribbon's length is fixed by the icon's " +
+                    "mask, so use shorter text or a narrower font.",
                 style.text,
                 style.text.length,
                 fitted.capHeight,
@@ -125,10 +132,25 @@ internal class BannerPainter(
         return fitted.pathData
     }
 
+    /**
+     * The text's proportions, measured once.
+     *
+     * The band is derived from the text, so the geometry cannot be built without this — and it does
+     * not depend on the vector being painted, so every icon file in a variant shares it.
+     */
+    private val textWidthPerCapHeight: Double? by lazy { text.naturalWidthPerCapHeight(style.text) }
+
     private fun ribbonFor(root: Element, describedAs: String): Ribbon {
         val width = root.viewport("viewportWidth", describedAs)
         val height = root.viewport("viewportHeight", describedAs)
-        return Ribbon(width, height, style.corner, style.heightPercent)
+        return Ribbon(
+            viewportWidth = width,
+            viewportHeight = height,
+            corner = style.corner,
+            maxTextSizePercent = style.maxTextSizePercent,
+            lineHeight = style.lineHeight,
+            textWidthPerCapHeight = textWidthPerCapHeight,
+        )
     }
 
     private fun Element.viewport(attribute: String, describedAs: String): Double {
@@ -161,8 +183,9 @@ internal class BannerPainter(
          *
          * 4dp is about 12 physical pixels at xxhdpi and 8 at xhdpi — the floor at which uppercase
          * glyphs are still distinguishable from a smear. It is deliberately well under anything
-         * anyone would choose on purpose: at the default height of 20 it clears `DEBUG` (6.7dp) and
-         * `STAGING` (4.7dp) and catches `STAGING RC1` (3.0dp), which is the case that prompted it.
+         * anyone would choose on purpose: with the default style in Roboto Mono 700 it clears
+         * `DEBUG` (7.4dp) and `STAGING` (5.4dp) and catches `STAGING RC1` (3.6dp), which is the case
+         * that prompted it.
          */
         const val MIN_LEGIBLE_CAP_HEIGHT_DP: Double = 4.0
     }
