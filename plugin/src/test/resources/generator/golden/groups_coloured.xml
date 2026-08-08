@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector
+    xmlns:aapt="http://schemas.android.com/aapt"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:height="108dp"
+    android:viewportHeight="108"
+    android:viewportWidth="108"
+    android:width="108dp">
+    <!-- The plugin must not disturb any of this. -->
+    <group
+        android:name="tilted"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="15">
+        <clip-path
+            android:name="window"
+            android:pathData="M10,10h88v88h-88z" />
+        <path android:pathData="M20,20h68v68h-68z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:endX="88"
+                    android:endY="88"
+                    android:startX="20"
+                    android:startY="20"
+                    android:type="linear">
+                    <item
+                        android:color="#44000000"
+                        android:offset="0.0" />
+                    <item
+                        android:color="#00000000"
+                        android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34L74,74L34,74z" />
+    <path
+        android:fillColor="#FFE91E63"
+        android:pathData="M 81 0 L 0 81 L 0 59.4 L 59.4 0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 28.13 51.83 L 30.75 49.21 Q 31.4 48.56 31.82 47.83 Q 32.23 47.09 32.41 46.32 Q 32.55 45.65 32.52 44.93 Q 32.49 44.21 32.29 43.5 Q 32.07 42.73 31.6 41.98 Q 31.14 41.23 30.46 40.55 L 29.66 39.75 Q 28.95 39.04 28.18 38.58 Q 27.39 38.1 26.59 37.87 Q 25.91 37.7 25.23 37.68 Q 24.53 37.65 23.87 37.82 Q 23.07 38 22.32 38.44 Q 21.57 38.86 20.9 39.54 L 18.37 42.07 L 28.13 51.83 Z M 21.79 41.69 L 22.42 41.06 Q 22.76 40.72 23.13 40.51 Q 23.5 40.29 23.89 40.19 Q 24.39 40.07 24.92 40.13 Q 25.45 40.18 25.98 40.4 Q 26.42 40.6 26.85 40.92 Q 27.29 41.23 27.72 41.66 L 28.54 42.48 Q 29 42.93 29.32 43.38 Q 29.64 43.81 29.84 44.25 Q 30.05 44.77 30.11 45.26 Q 30.18 45.72 30.1 46.15 Q 30.02 46.56 29.8 46.96 Q 29.59 47.35 29.24 47.7 L 28.52 48.42 L 21.79 41.69 Z M 38.15 33.24 L 36.67 31.76 L 32.66 35.77 L 30.19 33.31 L 34.86 28.65 L 33.32 27.11 L 26.76 33.67 L 36.53 43.44 L 43.11 36.86 L 41.59 35.33 L 36.9 40.02 L 34.14 37.25 L 38.15 33.24 Z M 46.95 33.02 L 48.87 31.09 L 42.07 18.37 L 39.98 20.45 L 44.7 28.49 L 45.17 29.34 L 44.34 28.84 L 36.31 24.12 L 34.23 26.2 L 46.95 33.02 Z" />
+</vector>
