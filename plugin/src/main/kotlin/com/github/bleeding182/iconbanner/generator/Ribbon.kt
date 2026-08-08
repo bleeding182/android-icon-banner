@@ -18,11 +18,20 @@ internal class Ribbon(
     /** Shorter viewport edge; the unit everything normalises against. */
     private val s: Double = minOf(viewportWidth, viewportHeight)
 
-    /** Distance from the corner to the ribbon's outer edge, along each axis. Not configurable. */
-    val reach: Double = REACH_FRACTION * s
-
     /** Band width, measured perpendicular to the ribbon. */
     val bandWidth: Double = heightPercent / 100.0 * s
+
+    /**
+     * Distance from the corner to the ribbon's inner edge — the one deeper into the icon — along
+     * each axis. Not configurable.
+     *
+     * Anchored on the *corner-side* edge, so a taller band grows towards the centre of the icon
+     * instead of towards the corner. The alternative, pinning this inner edge and letting height
+     * push the other edge outwards, means the ribbon drifts off the visible area as it gets
+     * thicker: an adaptive icon is masked to a circle of radius `s * 1/3` about the centre, and
+     * anything beyond that is simply not drawn.
+     */
+    val reach: Double = (CORNER_EDGE_FRACTION * s + bandWidth).coerceAtMost(s)
 
     val p1x: Double
     val p1y: Double
@@ -86,12 +95,29 @@ internal class Ribbon(
     /** Text height budget: the band, less padding above and below. */
     val availableTextHeight: Double get() = bandWidth - 2 * padding
 
+    /** Where the band's centre line sits, measured along each axis from the corner. */
+    private val centreLine: Double get() = reach - bandWidth / 2.0
+
+    /** Perpendicular distance from the middle of the icon out to that centre line. */
+    private val centreLineOffset: Double get() = (s - centreLine) / SQRT_2
+
     /**
-     * Text length budget: the band's centre line where it crosses the icon, less padding at each
-     * end. The centre line sits at `reach - bandWidth/2` along both axes, and the chord of a 45°
-     * band spanning that much on each axis is `sqrt(2)` times as long.
+     * Text length budget, less padding at each end.
+     *
+     * Two limits, whichever is tighter. The centre line's chord across the *square* is the obvious
+     * one. The chord across the icon's **safe zone** is the one that matters: a launcher masks an
+     * adaptive icon to a circle, so text sized to the square runs out past the rim and is sheared
+     * off — which is exactly what happened before this was here. A banner nobody can read defeats
+     * the point of the plugin, so long text shrinks rather than spills.
      */
-    val availableTextLength: Double get() = (reach - bandWidth / 2.0) * SQRT_2 - 2 * padding
+    val availableTextLength: Double
+        get() {
+            val acrossSquare = centreLine * SQRT_2
+            val safeRadius = SAFE_ZONE_FRACTION * s
+            val halfChord = safeRadius * safeRadius - centreLineOffset * centreLineOffset
+            val acrossSafeZone = if (halfChord > 0) 2 * Math.sqrt(halfChord) else 0.0
+            return minOf(acrossSquare, acrossSafeZone) - 2 * padding
+        }
 
     /** `M p1 L p2 L p3 L p4 Z`. */
     fun quadPathData(): String = buildString {
@@ -148,11 +174,19 @@ internal class Ribbon(
 
     internal companion object {
         /**
-         * How far along each axis the ribbon's outer edge sits, as a fraction of the shorter
-         * viewport edge. Carried over from the browser generator's default; deliberately fixed so
-         * the DSL has one size knob rather than two.
+         * How far along each axis the ribbon's corner-side edge sits, as a fraction of the shorter
+         * viewport edge. Deliberately fixed, so the DSL has one size knob rather than two.
+         *
+         * Chosen against the adaptive-icon mask rather than by eye on a full 108 square. At the
+         * default band width this puts that edge about `0.28 * s` from the centre, inside the
+         * 66dp safe zone (`0.306 * s`) with a little room to spare, and well inside the 72dp mask
+         * (`0.333 * s`).
+         *
+         * The browser generator this is modelled on effectively used `0.55` here, which lands the
+         * edge at `0.318 * s` — outside the safe zone and a whisker off the mask rim. Its preview
+         * drew the whole square with no mask, so nothing made that visible.
          */
-        const val REACH_FRACTION: Double = 0.75
+        const val CORNER_EDGE_FRACTION: Double = 0.60
 
         /**
          * Clearance around the text, as a fraction of the band width. Tuned by eye at launcher
@@ -160,6 +194,14 @@ internal class Ribbon(
          * looks lost. Named so it can be moved without hunting through the geometry.
          */
         const val TEXT_PADDING_FRACTION: Double = 0.18
+
+        /**
+         * Radius of the adaptive-icon safe zone — 66dp of the 108dp canvas — as a fraction of the
+         * shorter viewport edge. Content inside it is guaranteed to survive every launcher mask.
+         * The mask itself is 72dp, but that extra margin covers mask *shape*, and a circle is the
+         * worst case for something running diagonally across a corner.
+         */
+        const val SAFE_ZONE_FRACTION: Double = 33.0 / 108.0
 
         private val SQRT_2: Double = Math.sqrt(2.0)
     }

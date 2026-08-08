@@ -107,7 +107,9 @@ abstract class BannerGeneratorTestCases {
         // The golden files pin the exact outline but would not obviously flag text that has spilled
         // over the ribbon edge. This checks the property the auto-fit exists to guarantee, for both
         // the height-constrained and the length-constrained case, in every corner.
-        val band = 59.4..81.0
+        // Derived, not hardcoded: retuning the ribbon's position should not need this edited.
+        val cornerEdge = Ribbon.CORNER_EDGE_FRACTION * 108.0
+        val band = cornerEdge..(cornerEdge + style().heightPercent / 100.0 * 108.0)
         BannerCorner.entries.forEach { corner ->
             listOf("QA", "DEV", "STAGING RC1").forEach { text ->
                 val output = plainVector(style(text = text, corner = corner))

@@ -302,11 +302,21 @@ limitation.
 `height` is a percentage of the icon's edge length, normalized against whatever viewport the target
 vector declares, so the same value produces the same visual result on a 108-unit or a 24-unit icon.
 
-The ribbon's outer edge is pinned at 75% along the corner diagonal, carried over from the browser
-generator's default. Text is centered on the band and scaled to fit the smaller of the band height
-less padding and the available chord length less padding. There is no font-size knob: this is a
-debug marker and a build tool has no live preview, so tuning two sliders blind was rejected in
-favour of one knob plus auto-fit.
+The ribbon's **corner-side** edge is pinned at 60% along the corner diagonal, so a taller band grows
+towards the middle of the icon rather than out towards the corner. Text is centered on the band and
+scaled to fit the smaller of the band height less padding and the available chord length less
+padding. There is no font-size knob: this is a debug marker and a build tool has no live preview, so
+tuning two sliders blind was rejected in favour of one knob plus auto-fit.
+
+Both of those numbers are set against the **adaptive-icon mask**, not against the full 108 square,
+and that distinction turned out to matter more than expected. A launcher masks the icon to a circle;
+the browser generator's preview drew the whole square, so nothing in it revealed that its defaults
+put the ribbon partly outside the visible area. On a real device the band's ends were sheared off
+and the first and last glyphs of the text with them.
+
+So: the corner-side edge sits inside the 66dp safe zone at the default band width, and the text
+length budget is the chord across that safe zone rather than across the square. Long text shrinks
+instead of spilling. A banner nobody can read defeats the point of the plugin.
 
 Text is used verbatim. The browser generator force-uppercased; the plugin does not.
 

@@ -19,9 +19,11 @@ class RibbonTest {
     ) = Ribbon(width, height, corner, heightPercent)
 
     @Test
-    fun `reach is three quarters of the shorter edge`() {
-        assertEquals(81.0, ribbon(BannerCorner.TOP_LEFT).reach)
-        assertEquals(18.0, ribbon(BannerCorner.TOP_LEFT, width = 24.0, height = 24.0).reach)
+    fun `reach places the corner-side edge, so height grows the band inwards`() {
+        // reach is the band's inner edge; the corner-side edge is reach - bandWidth and is what is
+        // actually anchored, so a thicker band never drifts out towards the masked-off corner.
+        assertEquals(0.60 * 108 + 21.6, ribbon(BannerCorner.TOP_LEFT).reach, 1e-9)
+        assertEquals(0.60 * 24 + 4.8, ribbon(BannerCorner.TOP_LEFT, width = 24.0, height = 24.0).reach, 1e-9)
     }
 
     @Test
@@ -35,14 +37,14 @@ class RibbonTest {
         // Same band on a tall icon as on a square one of the same width, so the setting stays
         // portable between projects with differently shaped foregrounds.
         val tall = ribbon(BannerCorner.TOP_LEFT, width = 108.0, height = 200.0)
-        assertEquals(81.0, tall.reach)
+        assertEquals(86.4, tall.reach, 1e-9)
         assertEquals(21.6, tall.bandWidth, 1e-9)
     }
 
     @Test
     fun `top left quad runs from the x axis to the y axis`() {
         assertEquals(
-            "M 81 0 L 0 81 L 0 59.4 L 59.4 0 Z",
+            "M 86.4 0 L 0 86.4 L 0 64.8 L 64.8 0 Z",
             ribbon(BannerCorner.TOP_LEFT).quadPathData(),
         )
     }
@@ -50,7 +52,7 @@ class RibbonTest {
     @Test
     fun `top right quad is mirrored into the right edge`() {
         assertEquals(
-            "M 27 0 L 108 81 L 108 59.4 L 48.6 0 Z",
+            "M 21.6 0 L 108 86.4 L 108 64.8 L 43.2 0 Z",
             ribbon(BannerCorner.TOP_RIGHT).quadPathData(),
         )
     }
@@ -58,7 +60,7 @@ class RibbonTest {
     @Test
     fun `bottom left quad is mirrored into the bottom edge`() {
         assertEquals(
-            "M 0 27 L 81 108 L 59.4 108 L 0 48.6 Z",
+            "M 0 21.6 L 86.4 108 L 64.8 108 L 0 43.2 Z",
             ribbon(BannerCorner.BOTTOM_LEFT).quadPathData(),
         )
     }
@@ -66,7 +68,7 @@ class RibbonTest {
     @Test
     fun `bottom right quad is mirrored into both edges`() {
         assertEquals(
-            "M 27 108 L 108 27 L 108 48.6 L 48.6 108 Z",
+            "M 21.6 108 L 108 21.6 L 108 43.2 L 43.2 108 Z",
             ribbon(BannerCorner.BOTTOM_RIGHT).quadPathData(),
         )
     }
@@ -84,12 +86,12 @@ class RibbonTest {
     @Test
     fun `pivot is the centre of the band`() {
         val topLeft = ribbon(BannerCorner.TOP_LEFT)
-        assertEquals(35.1, topLeft.pivotX, 1e-9)
-        assertEquals(35.1, topLeft.pivotY, 1e-9)
+        assertEquals(37.8, topLeft.pivotX, 1e-9)
+        assertEquals(37.8, topLeft.pivotY, 1e-9)
 
         val bottomRight = ribbon(BannerCorner.BOTTOM_RIGHT)
-        assertEquals(108.0 - 35.1, bottomRight.pivotX, 1e-9)
-        assertEquals(108.0 - 35.1, bottomRight.pivotY, 1e-9)
+        assertEquals(108.0 - 37.8, bottomRight.pivotX, 1e-9)
+        assertEquals(108.0 - 37.8, bottomRight.pivotY, 1e-9)
     }
 
     @Test
@@ -97,25 +99,30 @@ class RibbonTest {
         val ribbon = ribbon(BannerCorner.TOP_LEFT)
         val padding = 0.18 * 21.6
         assertEquals(21.6 - 2 * padding, ribbon.availableTextHeight, 1e-9)
-        assertEquals((81.0 - 10.8) * Math.sqrt(2.0) - 2 * padding, ribbon.availableTextLength, 1e-9)
+        // The safe-zone chord, not the square one: the square would let text run past the mask.
+        val centreLine = 86.4 - 10.8
+        val offset = (108.0 - centreLine) / Math.sqrt(2.0)
+        val acrossSafeZone = 2 * Math.sqrt(33.0 * 33.0 - offset * offset)
+        assertTrue(acrossSafeZone < centreLine * Math.sqrt(2.0), "the safe zone should be the tighter limit")
+        assertEquals(acrossSafeZone - 2 * padding, ribbon.availableTextLength, 1e-9)
     }
 
     @Test
     fun `inverse clip is the corner triangle plus the rest of the icon`() {
         assertEquals(
-            "M 0 0 L 59.4 0 L 0 59.4 Z M 81 0 L 108 0 L 108 108 L 0 108 L 0 81 Z",
+            "M 0 0 L 64.8 0 L 0 64.8 Z M 86.4 0 L 108 0 L 108 108 L 0 108 L 0 86.4 Z",
             ribbon(BannerCorner.TOP_LEFT).inverseClipPathData(),
         )
         assertEquals(
-            "M 108 0 L 48.6 0 L 108 59.4 Z M 27 0 L 0 0 L 0 108 L 108 108 L 108 81 Z",
+            "M 108 0 L 43.2 0 L 108 64.8 Z M 21.6 0 L 0 0 L 0 108 L 108 108 L 108 86.4 Z",
             ribbon(BannerCorner.TOP_RIGHT).inverseClipPathData(),
         )
         assertEquals(
-            "M 0 108 L 59.4 108 L 0 48.6 Z M 0 27 L 0 0 L 108 0 L 108 108 L 81 108 Z",
+            "M 0 108 L 64.8 108 L 0 43.2 Z M 0 21.6 L 0 0 L 108 0 L 108 108 L 86.4 108 Z",
             ribbon(BannerCorner.BOTTOM_LEFT).inverseClipPathData(),
         )
         assertEquals(
-            "M 108 108 L 48.6 108 L 108 48.6 Z M 27 108 L 0 108 L 0 0 L 108 0 L 108 27 Z",
+            "M 108 108 L 43.2 108 L 108 43.2 Z M 21.6 108 L 0 108 L 0 0 L 108 0 L 108 21.6 Z",
             ribbon(BannerCorner.BOTTOM_RIGHT).inverseClipPathData(),
         )
     }
