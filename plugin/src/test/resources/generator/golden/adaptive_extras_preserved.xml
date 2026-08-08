@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-maintained; do not regenerate. -->
+<adaptive-icon
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UnusedResources">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground_iconbanner_mono" />
+    <!-- A layer the plugin knows nothing about. -->
+    <future-layer android:drawable="@drawable/ic_launcher_future" />
+</adaptive-icon>

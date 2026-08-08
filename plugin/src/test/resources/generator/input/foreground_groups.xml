@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The plugin must not disturb any of this. -->
+    <group
+        android:name="tilted"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="15">
+        <clip-path
+            android:name="window"
+            android:pathData="M10,10h88v88h-88z" />
+        <path android:pathData="M20,20h68v68h-68z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:endX="88"
+                    android:endY="88"
+                    android:startX="20"
+                    android:startY="20"
+                    android:type="linear">
+                    <item
+                        android:color="#44000000"
+                        android:offset="0.0" />
+                    <item
+                        android:color="#00000000"
+                        android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34L74,74L34,74z" />
+</vector>
