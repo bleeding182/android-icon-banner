@@ -7,7 +7,7 @@ package io.github.bleeding182.iconbanner.font
  * checked exception, and the Gradle layer only ever wants to surface the message as a build
  * failure.
  */
-class FontResolutionException(
+internal class FontResolutionException(
     message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)

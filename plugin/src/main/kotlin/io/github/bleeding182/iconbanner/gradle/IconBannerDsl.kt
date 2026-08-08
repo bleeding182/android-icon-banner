@@ -63,7 +63,12 @@ abstract class IconBannerDsl @Inject constructor(objects: ObjectFactory) {
             }
         }
 
-    /** Ribbon fill. A hex literal, or a `@color/...` / `?attr/...` reference passed straight through. */
+    /**
+     * Ribbon fill. A hex literal, or a `@color/...` reference passed straight through.
+     *
+     * Not a theme attribute: a launcher inflates the icon without a theme, so `?attr/...` could not
+     * resolve. The build fails rather than shipping an icon that will not load.
+     */
     abstract val color: Property<String>
 
     /** Text fill. Same accepted forms as [color]. */

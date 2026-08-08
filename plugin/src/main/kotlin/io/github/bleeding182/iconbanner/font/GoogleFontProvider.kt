@@ -5,6 +5,7 @@ import io.github.bleeding182.iconbanner.api.FontSpec
 import java.io.File
 import java.io.IOException
 import java.net.URI
+import java.net.URISyntaxException
 import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -17,9 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Fetches a Google Font as a TrueType file and caches it for every project on the machine.
  *
  * Two steps, both at execution time. The CSS endpoint is asked for the family and axes; it answers
- * with a direct `.ttf` URL, which is then downloaded. Asking with a **legacy user agent** is what
- * makes that work: a modern one gets woff2 back, which would drag a brotli decoder into the plugin
- * for no benefit. No API key is involved.
+ * with a direct `.ttf` URL, which is then downloaded. No API key is involved.
  *
  * A repeat request for the same [FontSpec] touches the network zero times — not even for the CSS —
  * because the resolved URL is cached alongside the font. See [FontCache] for the layout.
@@ -30,14 +29,18 @@ import java.util.concurrent.ConcurrentHashMap
  * @param cssEndpoint the Google Fonts CSS endpoint. Injectable so tests can point at a local server.
  *   The font URL itself is not configurable: it comes out of the CSS response body, so a test server
  *   controls it by emitting its own address.
- * @param userAgent sent on both requests. The default is deliberately ancient; overriding it with a
- *   modern browser string will get woff2 back and fail the magic-byte check.
+ * @param fontOrigin the only origin a font may be downloaded from, as `scheme://host[:port]`. The
+ *   `.ttf` URL is lifted out of a response body and can also come back out of a cache file written
+ *   by an earlier build, so neither is trustworthy input. Injectable only so the loopback test
+ *   server can stand in for gstatic.
+ * @param userAgent sent on both requests. See [USER_AGENT].
  */
-class GoogleFontProvider @JvmOverloads constructor(
+internal class GoogleFontProvider @JvmOverloads constructor(
     val cacheDirectory: File = defaultCacheDirectory(),
     private val offline: Boolean = false,
     private val cssEndpoint: String = GOOGLE_FONTS_CSS_ENDPOINT,
-    private val userAgent: String = LEGACY_USER_AGENT,
+    private val fontOrigin: String = GOOGLE_FONTS_FILE_ORIGIN,
+    private val userAgent: String = USER_AGENT,
     private val httpClient: HttpClient = defaultHttpClient(),
 ) : FontProvider {
 
@@ -49,7 +52,7 @@ class GoogleFontProvider @JvmOverloads constructor(
         // per task, and two tasks in one daemon should still download a font only once.
         val lock = locks.computeIfAbsent(cacheDirectory.absolutePath + "|" + FontCache.specKey(spec)) { Any() }
         synchronized(lock) {
-            val knownUrl = cache.resolvedUrl(spec)
+            val knownUrl = cache.resolvedUrl(spec)?.also(::checkOrigin)
             if (knownUrl != null) {
                 cache.cachedFont(knownUrl)?.let { return it.toFile() }
             }
@@ -58,6 +61,7 @@ class GoogleFontProvider @JvmOverloads constructor(
             if (offline) throw offlineFailure(spec, cssUrl, knownUrl)
 
             val fontUrl = knownUrl ?: GoogleFontsCss.selectTtfUrl(fetchCss(cssUrl, spec), spec, cssUrl)
+            checkOrigin(fontUrl)
             val file = download(fontUrl)
             cache.recordResolvedUrl(spec, fontUrl)
             return file.toFile()
@@ -72,6 +76,36 @@ class GoogleFontProvider @JvmOverloads constructor(
             throw FontResolutionException(
                 "Font weight ${spec.weight} for '${spec.family}' is outside the CSS range 1..1000. " +
                     "Use a normal weight such as 400 or 700.",
+            )
+        }
+    }
+
+    /**
+     * Refuses to fetch anything that is not served from [fontOrigin].
+     *
+     * The URL reaching here was lifted out of a `url(...)` in a response body, or read back out of a
+     * plain text file in the shared cache — a cleartext `http://elsewhere/x.ttf` in either place
+     * would otherwise be downloaded and handed to the glyph outliner. Scheme, host and port are
+     * compared individually rather than as one string so `https://fonts.gstatic.com@elsewhere/x.ttf`,
+     * whose *authority* starts with the expected host, is rejected too.
+     */
+    private fun checkOrigin(fontUrl: String) {
+        val uri = try {
+            URI(fontUrl)
+        } catch (e: URISyntaxException) {
+            throw FontResolutionException("Not a usable font URL: $fontUrl", e)
+        }
+        val expected = URI(fontOrigin)
+        val allowed = uri.userInfo == null &&
+            uri.scheme.equals(expected.scheme, ignoreCase = true) &&
+            uri.host.equals(expected.host, ignoreCase = true) &&
+            uri.port == expected.port
+        if (!allowed) {
+            throw FontResolutionException(
+                "The banner font would have been downloaded from $fontUrl, which is not $fontOrigin. " +
+                    "Google Fonts serves font files from that one origin over https; refusing to " +
+                    "fetch from anywhere else. Delete ${cacheDirectory.absolutePath} if a stale " +
+                    "cache entry is the cause.",
             )
         }
     }
@@ -153,11 +187,23 @@ class GoogleFontProvider @JvmOverloads constructor(
     companion object {
         const val GOOGLE_FONTS_CSS_ENDPOINT: String = "https://fonts.googleapis.com/css2"
 
+        /** The single origin Google Fonts serves `.ttf` files from. */
+        const val GOOGLE_FONTS_FILE_ORIGIN: String = "https://fonts.gstatic.com"
+
         /**
-         * Anything the endpoint considers too old to understand woff2. This one string is the whole
-         * reason the plugin needs no brotli decoder; do not "modernise" it.
+         * Identifies the plugin, honestly.
+         *
+         * The `css2` endpoint picks a font format from the user agent, and it only serves woff2 to
+         * agents it *recognises* as modern browsers. Anything it does not recognise — this string,
+         * curl's default, an empty header — gets TrueType, which is what the plugin wants, since a
+         * woff2 would drag a brotli decoder in for no benefit. Verified against the live endpoint.
+         *
+         * So there is nothing to gain by claiming to be an ancient browser, which an earlier version
+         * of this did. Adding a *recognised* browser string is the only change that would break the
+         * format assumption.
          */
-        const val LEGACY_USER_AGENT: String = "Mozilla/4.0"
+        const val USER_AGENT: String =
+            "android-icon-banner (+https://github.com/bleeding182/android-icon-banner)"
 
         private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(30)
 

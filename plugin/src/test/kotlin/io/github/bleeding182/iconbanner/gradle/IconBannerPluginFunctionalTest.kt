@@ -86,9 +86,19 @@ class IconBannerPluginFunctionalTest {
         assertTrue(tasks.output.contains("generateDevReleaseIconBanner"))
         assertFalse(tasks.output.contains("generateProdDebugIconBanner"), tasks.output)
 
-        fixture.runner(":generateDevDebugIconBanner").build()
+        // --no-build-cache so the task actually executes: another case in this suite populates the
+        // shared local cache with an identical configuration, and a cached task logs nothing.
+        val build = fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
 
         assertBannerText("DEV", fixture.generatedForeground("devDebug"))
+        // Visible on a plain build, with no --info: shipping a bannered icon to production is the
+        // one mistake here that cannot be taken back, and nothing else in the build mentions the
+        // override at all.
+        assertTrue(
+            build.output.contains("icon banner: variant 'devDebug' replaces @mipmap/ic_launcher"),
+            build.output,
+        )
+        assertTrue(build.output.contains("\"DEV\""), build.output)
     }
 
     @Test

@@ -11,11 +11,14 @@ internal data class FontFace(
 )
 
 /**
- * Parses the CSS the Google Fonts `css2` endpoint returns to a legacy user agent.
+ * Parses the CSS the Google Fonts `css2` endpoint returns to an unrecognised user agent.
  *
- * A legacy UA gets TrueType rather than woff2, and — verified against the live endpoint — a single
+ * Such an agent gets TrueType rather than woff2, and — verified against the live endpoint — a single
  * unsubsetted `@font-face` block. Subsetted responses (several blocks with `unicode-range`) are
  * still handled, because nothing in the contract promises they cannot happen.
+ *
+ * The URL this hands back is *not* trusted: it comes out of a response body, and
+ * [GoogleFontProvider] checks its origin before fetching it.
  */
 internal object GoogleFontsCss {
 

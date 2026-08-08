@@ -37,14 +37,19 @@ class GoogleFontProviderTest {
     }
 
     @Test
-    fun `asks for the plain weight with a legacy user agent`(@TempDir cacheDir: File) {
+    fun `asks for the plain weight and identifies itself as the plugin`(@TempDir cacheDir: File) {
         server().use { server ->
             provider(cacheDir, server).resolve(robotoMonoBold)
 
             val request = server.cssRequests.single()
             assertEquals("family=Roboto+Mono:wght@700", request.query)
-            assertEquals("Mozilla/4.0", request.userAgent)
-            assertEquals("Mozilla/4.0", server.fontRequests.single().userAgent)
+            // Pinned: the css2 endpoint serves woff2 only to agents it recognises as modern
+            // browsers, so this string has to stay something it does not recognise.
+            assertEquals(
+                "android-icon-banner (+https://github.com/bleeding182/android-icon-banner)",
+                request.userAgent,
+            )
+            assertEquals(GoogleFontProvider.USER_AGENT, server.fontRequests.single().userAgent)
         }
     }
 
@@ -235,6 +240,60 @@ class GoogleFontProviderTest {
     }
 
     @Test
+    fun `a font url outside gstatic is refused rather than downloaded`(@TempDir cacheDir: File) {
+        server().use { server ->
+            // The .ttf address is lifted straight out of a response body, so it is attacker-shaped
+            // input: a MITM on the CSS request, or a compromised endpoint, picks it.
+            server.css = { _, _ ->
+                200 to """
+                    @font-face {
+                      font-family: 'Roboto Mono';
+                      font-style: normal;
+                      font-weight: 700;
+                      src: url(http://attacker.example/x.ttf) format('truetype');
+                    }
+                """.trimIndent().toByteArray(UTF_8)
+            }
+
+            val failure = assertFailsWith<FontResolutionException> {
+                // The real origin default, which is the thing under test here.
+                GoogleFontProvider(cacheDirectory = cacheDir, cssEndpoint = server.cssEndpoint)
+                    .resolve(robotoMonoBold)
+            }
+
+            assertContains(failure.message!!, "http://attacker.example/x.ttf")
+            assertContains(failure.message!!, "https://fonts.gstatic.com")
+            assertEquals(emptyList(), cachedFileNames(cacheDir), "something was downloaded anyway")
+        }
+    }
+
+    @Test
+    fun `a cached url outside gstatic is refused without a download`(@TempDir cacheDir: File) {
+        // A poisoned or hand-edited cache file must not become a fetch either: resolvedUrl feeds
+        // the downloader directly on the fast path that never touches the CSS endpoint.
+        FontCache(cacheDir.toPath()).recordResolvedUrl(robotoMonoBold, "https://fonts.gstatic.com.evil/x.ttf")
+
+        val failure = assertFailsWith<FontResolutionException> {
+            GoogleFontProvider(cacheDirectory = cacheDir).resolve(robotoMonoBold)
+        }
+
+        assertContains(failure.message!!, "fonts.gstatic.com.evil")
+        assertEquals(emptyList(), cachedFileNames(cacheDir))
+    }
+
+    @Test
+    fun `a host smuggled in as user info is not mistaken for gstatic`(@TempDir cacheDir: File) {
+        FontCache(cacheDir.toPath())
+            .recordResolvedUrl(robotoMonoBold, "https://fonts.gstatic.com@attacker.example/x.ttf")
+
+        val failure = assertFailsWith<FontResolutionException> {
+            GoogleFontProvider(cacheDirectory = cacheDir).resolve(robotoMonoBold)
+        }
+
+        assertContains(failure.message!!, "attacker.example")
+    }
+
+    @Test
     fun `a blank family is rejected before any request`(@TempDir cacheDir: File) {
         server().use { server ->
             val failure = assertFailsWith<FontResolutionException> {
@@ -258,11 +317,17 @@ class GoogleFontProviderTest {
 
     private fun server() = FakeFontServer(fontFixture)
 
+    /**
+     * [GoogleFontProvider.fontOrigin] has to be widened to the loopback server, because the real
+     * default only trusts `https://fonts.gstatic.com` and nothing in a test can be served from
+     * there. The cases that exercise the default pass it explicitly.
+     */
     private fun provider(cacheDir: File, server: FakeFontServer, offline: Boolean = false) =
         GoogleFontProvider(
             cacheDirectory = cacheDir,
             offline = offline,
             cssEndpoint = server.cssEndpoint,
+            fontOrigin = server.baseUrl,
         )
 
     private fun cachedFileNames(cacheDir: File): List<String> {

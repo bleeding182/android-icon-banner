@@ -1,7 +1,9 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import io.github.bleeding182.iconbanner.generator.FakeResources
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -63,5 +65,52 @@ class ManifestIconsTest {
         val main = manifest("main.xml", """android:icon="@drawable/only"""")
 
         assertEquals(ResourceRef("drawable", "only"), ManifestIcons.read(listOf(missing, main)).icon)
+    }
+
+    // ------------------------------------------------- which round icon gets bannered
+
+    private val invented = DeclaredIcons(
+        icon = ResourceRef("mipmap", "ic_launcher"),
+        roundIcon = ResourceRef("mipmap", "ic_launcher_round"),
+        roundIsFallback = true,
+    )
+
+    @Test
+    fun `an invented round icon backed only by rasters is dropped`() {
+        // The layout this exists for: an app that never migrated to adaptive icons still ships
+        // legacy per-density ic_launcher_round.webp files and declares no android:roundIcon. The
+        // reference resolves to something, so a mere emptiness check keeps it, and the generator
+        // then fails the build with "only raster files were found" over a resource the plugin
+        // invented — contradicting the policy that rasters are skipped in silence.
+        val resources = FakeResources()
+            .raster("mipmap-hdpi/ic_launcher_round.webp")
+            .raster("mipmap-xxhdpi/ic_launcher_round.webp")
+
+        assertNull(invented.roundIconToBanner(resources))
+    }
+
+    @Test
+    fun `an invented round icon with an xml variant is kept`() {
+        val resources = FakeResources()
+            .raster("mipmap-hdpi/ic_launcher_round.webp")
+            .xml("mipmap-anydpi-v26/ic_launcher_round.xml", "<adaptive-icon />")
+
+        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
+    }
+
+    @Test
+    fun `an invented round icon that resolves to nothing is dropped`() {
+        assertNull(invented.roundIconToBanner(FakeResources()))
+    }
+
+    @Test
+    fun `a declared round icon is kept even when it resolves badly, so the build still fails`() {
+        val declared = invented.copy(roundIsFallback = false)
+
+        assertEquals(
+            ResourceRef("mipmap", "ic_launcher_round"),
+            declared.roundIconToBanner(FakeResources().raster("mipmap-hdpi/ic_launcher_round.webp")),
+        )
+        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), declared.roundIconToBanner(FakeResources()))
     }
 }

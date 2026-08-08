@@ -66,6 +66,19 @@ Faces are downloaded from Google Fonts on demand and cached in
 `~/.gradle/caches/android-icon-banner/fonts`, shared across projects and surviving `clean`. The
 first build that uses a family fetches it; nothing after that hits the network.
 
+The route is the public CSS endpoint, `fonts.googleapis.com/css2`, whose response is scraped for the
+`fonts.gstatic.com` URL of the face, which is then downloaded and checked for TrueType magic before
+it is cached. Only `https` URLs on `fonts.gstatic.com` are accepted, so a tampered CSS response or
+cache entry cannot redirect the download elsewhere.
+
+That endpoint returns woff2 to browsers it recognises and plain TTF to everything else, which is why
+the plugin identifies itself honestly and gets TTF: a woff2 would need a brotli decoder, and
+`java.awt.Font` cannot read one anyway.
+
+The obvious alternative — the raw TTFs in the `google/fonts` repository — is not used because most
+families there are now published as variable fonts, and `java.awt.Font` cannot instance a weight
+axis, which would break the `weight` option.
+
 `--offline` uses the cache or fails naming the URL it needed. Set the `iconbanner.fontCacheDir`
 Gradle property to relocate the cache, which is useful for a warmed, restorable cache on CI — use an
 absolute path, as a relative one resolves against the module the plugin is applied to.
@@ -84,9 +97,9 @@ rather than silently shipping an unmarked one.
 
 ## Versions
 
-The plugin is built and tested against AGP 9.3 and Gradle 9, and uses variant APIs that the AGP 8
-line does not have. There is no version guard, so an older AGP fails with a linkage error rather
-than a readable message.
+The plugin is built and tested against AGP 9.3 and Gradle 9, uses variant APIs the AGP 8 line does
+not have, and is compiled for JDK 17 — the floor AGP 9 itself sets. An older AGP fails early with a
+message naming the minimum and what it found, rather than an opaque linkage error.
 
 A variant with the `androidResources` build feature turned off has nowhere to put a generated
 resource directory. That case logs a warning and produces no banner instead of failing the build.

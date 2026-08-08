@@ -9,6 +9,15 @@ import java.io.File
 import java.util.Locale
 
 /**
+ * Text auto-fitted into a ribbon: the finished `pathData` plus the size it ended up at.
+ *
+ * [capHeight] is in the target vector's own viewport units, and is what the auto-fit produced rather
+ * than what was asked for — the caller has no other way to notice that the fit shrank the text past
+ * readability.
+ */
+internal data class FittedText(val pathData: String, val capHeight: Double)
+
+/**
  * Turns text into VectorDrawable `pathData`, using the JDK's own font support.
  *
  * Two properties of `GlyphVector.getOutline()` make this work without a font library, both
@@ -41,8 +50,8 @@ internal class BannerText(fontFile: File) {
     }
 
     /**
-     * The text outline, auto-fitted to the band, centred on the pivot and rotated into place, with
-     * every transform baked into the coordinates.
+     * The text outline auto-fitted to the band, centred on the pivot and rotated into place, with
+     * every transform baked into the coordinates, plus the size the fit settled on.
      *
      * The transform is baked rather than emitted as a `<group android:rotation="...">` because the
      * monochrome output needs the ribbon and the text to share one `<path>` element so even-odd
@@ -51,7 +60,7 @@ internal class BannerText(fontFile: File) {
      * Returns null when there is nothing to draw — empty text, or text that is all whitespace and
      * therefore has an empty outline.
      */
-    fun outlinePathData(text: String, ribbon: Ribbon): String? {
+    fun fit(text: String, ribbon: Ribbon): FittedText? {
         if (text.isEmpty()) return null
 
         val reference = outlineAt(text, REFERENCE_SIZE)
@@ -76,7 +85,7 @@ internal class BannerText(fontFile: File) {
             rotate(Math.toRadians(ribbon.textRotationDegrees))
             translate(-bounds.centerX, -bounds.centerY)
         }
-        return finalOutline.toPathData(transform)
+        return FittedText(finalOutline.toPathData(transform), bounds.height)
     }
 
     private fun outlineAt(text: String, size: Float): Shape {

@@ -10,7 +10,7 @@ launcher, in recents, or in app info. Mark the variants you choose; the rest sta
 ```kotlin
 plugins {
     id("com.android.application")
-    id("io.github.bleeding182.iconbanner") version "0.0.1-SNAPSHOT"
+    id("io.github.bleeding182.iconbanner") version "0.0.1"
 }
 
 android {
@@ -20,39 +20,19 @@ android {
 }
 ```
 
-No imports, no icon assets to maintain. A variant is bannered only if `text` resolves for it.
+That is the whole setup. The plugin is on the Gradle Plugin Portal, which every Gradle build already
+resolves from, so there is no repository to add — and no imports, no icon assets to maintain. A
+variant is bannered only if `text` resolves for it.
 
 <img src="docs/preview-monochrome.gif" alt="A themed icon cycling through three system tints, the banner text staying a cutout" width="144" align="right">
 
 Themed (monochrome) icons work too: the band is clipped out of the icon and the text punched through
 it as a real cutout, so it stays legible under any tint the system picks.
 
-Requires AGP 9 and Gradle 9, and a vector launcher icon. Applying it to a library or
+Requires **AGP 9.3+, Gradle 9+ and JDK 17+**, and a vector launcher icon. Applying it to a library or
 dynamic-feature module does nothing, so a convention plugin can apply it everywhere.
 
 <br clear="right">
-
-## Setup
-
-Until this lands on the Gradle Plugin Portal it publishes to GitHub Packages, which requires
-authentication even for public packages. Put `gpr.user` and `gpr.key` (a token with `read:packages`)
-in your `~/.gradle/gradle.properties`, then add the repository in `settings.gradle.kts`:
-
-```kotlin
-pluginManagement {
-    repositories {
-        maven("https://maven.pkg.github.com/bleeding182/android-icon-banner") {
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull
-                password = providers.gradleProperty("gpr.key").orNull
-            }
-        }
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-```
 
 ## Options
 
@@ -80,15 +60,20 @@ android {
 | Property | Type | Default | Notes |
 |---|---|---|---|
 | `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
-| `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` / `?attr/…` reference. |
+| `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` reference. Not `?attr/…` — a launcher inflates the icon without a theme. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
 | `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. |
-| `height` | `Int` | `20` | Width of the band, as a percentage of the icon's shorter edge. The only size knob; text auto-fits. |
+| `height` | `Int` | `20` | Width of the band across the diagonal, as a percentage of the icon's shorter edge. `1..40`; above that the band would reach past the icon's corner. The only size knob; text auto-fits. |
 | `font` | `String` | `Roboto Mono` | Any Google Fonts family, downloaded on first use and cached. |
 | `weight` | `Int` | `700` | Must be a weight the family actually offers. |
 | `italic` | `Boolean` | `false` | |
 
 `corner` takes the bare names above in both Kotlin and Groovy, with no import.
+
+**Keep the text short.** It is scaled to fit the band, and a launcher icon is small: about six
+characters stay comfortably readable at the default `height`, and eleven are legible on a monitor but
+not on a phone. The build warns when the fitted text drops below a readable size. Latin, left-to-right
+text only.
 
 ### Precedence
 
@@ -110,20 +95,25 @@ android {
 
 ### Build metadata in the banner
 
-`text` accepts a `Provider<String>`, which is only read when the icon is generated:
+`text` accepts a `Provider<String>`, so the banner can carry something the build computes:
 
 ```kotlin
-val gitSha = providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
+val gitSha = providers.exec { commandLine("git", "rev-parse", "--short=5", "HEAD") }
     .standardOutput.asText.map { it.trim() }
 
 android {
     buildTypes {
-        debug { iconBanner { text = gitSha.map { "DEV $it" } } }
+        debug { iconBanner { text = gitSha } }
     }
 }
 ```
 
-Assigning a provider enables the banner even before its value is known.
+Assigning a provider enables the banner even before its value is known. Note the short SHA — prefixing
+it with `"DEV "` would push the text past what stays readable at icon size.
+
+The value is read when the icon is generated rather than when the build is configured, with one
+caveat: under the configuration cache a provider is finalized as the entry is stored, so on builds
+where the generate task enters the task graph it resolves during configuration.
 
 ## Limitations
 
@@ -134,6 +124,25 @@ Assigning a provider enables the banner even before its value is known.
   drawable — a splash screen, say — gets the banner too.
 - The build fails if the chosen font has no glyph for a character in your text.
 - A variant with Android resources disabled gets no banner, with a warning.
+
+## Fonts and licensing
+
+Faces come from Google Fonts at build time and are cached in `~/.gradle/caches/android-icon-banner`.
+**No font file is shipped in your app** — the glyphs you use are traced to vector path data and that
+path data is what ends up in the icon.
+
+For the OFL-licensed families that most of Google Fonts uses, that means you owe nothing: the licence
+is explicit that artwork made with a font is not itself Font Software, and that embedding a font in a
+document does not affect the document's licence
+([OFL-FAQ 1.1.1 and 1.13](https://openfontlicense.org/ofl-faq/)). No attribution, no notice, and the
+Reserved Font Name clause is not engaged, because no derivative font exists.
+
+Some families — those under Apache-2.0 or the Ubuntu Font Licence — have no equivalent carve-out, and
+whether traced outlines are a derivative work of the font is genuinely unsettled. If you ship one of
+those, the conservative move is to include its notice on your licences screen. Each family's licence
+is listed on [fonts.google.com](https://fonts.google.com); the default, Roboto Mono, is OFL.
+
+None of the above is legal advice.
 
 ## More
 
@@ -146,4 +155,6 @@ that produced the same ribbon as copy-pasteable XML.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Third-party material is listed in [THIRD-PARTY.md](THIRD-PARTY.md).
+
+Android is a trademark of Google LLC.

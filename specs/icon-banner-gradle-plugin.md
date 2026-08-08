@@ -349,8 +349,14 @@ Small decisions, recorded because each one is a plausible way to ship something 
   of missing-glyph boxes on the icon is worse than a build error, and it follows the rule already
   established: fail when the marking would be wrong rather than ship it wrong.
 - **Nested components are skipped.** The androidTest APK gets no banner.
-- **Color values pass through to the fill attribute** after a light format check, so color resource
-  and theme attribute references work alongside hex literals. Only malformed literals are rejected.
+- **Color values pass through to the fill attribute** after a light format check, so `@color/…`
+  references work alongside hex literals. Only malformed literals are rejected.
+
+  Superseded during the pre-release review: theme attributes (`?attr/…`) were originally allowed to
+  pass through too, on the reasoning that Android accepts them in a `fillColor`. It does — but a
+  launcher inflates the icon from the APK's resources with no theme attached, so the attribute has
+  nothing to resolve against and the likely outcome is no icon rather than a fallback colour. They are
+  now rejected with a message that says why.
 - **Generated monochrome drawables use a reserved name suffix**, and the plugin fails rather than
   clobbering a resource that already holds that name.
 - **Non-square foreground viewports** normalize against the smaller dimension.
@@ -488,6 +494,15 @@ exercised with a local file, which is the only fake the suite needs.
   over.
 - The plugin embeds outlines derived from Open Font License fonts into the built application. This
   is worth an attribution note in the README even though no font binary is redistributed.
+
+  Resolved during the pre-release review, and the conclusion is the opposite of what this note
+  assumed: under the OFL no attribution is owed at all. OFL-FAQ 1.1.1 and 1.13 are explicit that
+  artwork produced with a font is not Font Software and that embedding does not affect the document's
+  licence, so the Reserved Font Name clause is never engaged — no derivative font exists. The real
+  caveat is families under Apache-2.0 or the Ubuntu Font Licence, which have no such carve-out and
+  where the derivative-work question is genuinely unsettled. Documented in the README's "Fonts and
+  licensing" section and in `THIRD-PARTY.md`, which also covers the OFL test font checked into the
+  test resources.
 - Not every family offers every weight. A request for an unavailable weight should fail with a
   message that makes the cause obvious rather than silently substituting a different face.
 - Unrelated to the feature: the root project name in the settings file contains a stray opening

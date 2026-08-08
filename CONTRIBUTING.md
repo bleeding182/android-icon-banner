@@ -44,6 +44,17 @@ stops short of uploading:
 The first version of a new plugin id goes through a one-time approval on the Portal before it
 appears, so expect the initial release to lag.
 
+### When a release half-fails
+
+The Portal job runs after the GitHub Packages job, so the reachable bad state is "on Packages, not on
+the Portal". Recover with **Re-run failed jobs**, which reruns only the Portal job. Do *not* use
+*Re-run all jobs* and do not delete and re-push the tag: GitHub Packages returns 409 for a version
+that already exists, so the rerun dies before it reaches the Portal. Delete the Packages version
+first if you must take that route.
+
+A version that reached the Portal can never be replaced. If a released artifact is wrong, the only
+remedy is to release the next version.
+
 Locally:
 
 ```bash

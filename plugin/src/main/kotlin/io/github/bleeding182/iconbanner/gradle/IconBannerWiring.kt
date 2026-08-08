@@ -4,6 +4,7 @@ import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import com.android.build.api.variant.ApplicationVariant
 import com.android.build.api.variant.DslExtension
 import com.android.build.api.variant.VariantExtensionConfig
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 
 /** The name of the `iconBanner { }` block in all three DSL slots. */
@@ -16,6 +17,13 @@ internal const val DSL_NAME = "iconBanner"
  * slot, so the block inside `android { }` is the defaults slot.
  */
 internal fun registerIconBanner(project: Project, components: ApplicationAndroidComponentsExtension) {
+    // Before anything else touches AGP: everything below is written against the AGP 9 variant API,
+    // and on AGP 8 the first call into it dies with a linkage error naming an internal class, which
+    // tells the user nothing about what to do. `pluginVersion` and the major/minor/micro accessors
+    // have been on AndroidComponents since AGP 7, so asking is itself safe.
+    val version = components.pluginVersion
+    unsupportedAgpMessage(version.major, version.minor, version.micro)?.let { throw GradleException(it) }
+
     components.registerExtension(
         DslExtension.Builder(DSL_NAME)
             .extendProjectWith(IconBannerDsl::class.java)
@@ -31,6 +39,26 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
         configureVariant(project, variant)
     }
 }
+
+/**
+ * Why this AGP is too old, or null when it will do.
+ *
+ * Takes the version apart rather than an [com.android.build.api.AndroidPluginVersion], so the rule
+ * itself is unit-testable — AGP is `compileOnly` and no AGP type exists on the test classpath.
+ * Previews of the minimum are accepted: `AndroidPluginVersion` sorts `9.3.0-alpha01` below `9.3.0`,
+ * but a nightly of the version the plugin is built against is a fine thing to develop against and
+ * refusing it would only be annoying.
+ */
+internal fun unsupportedAgpMessage(major: Int, minor: Int, micro: Int): String? {
+    if (major > MINIMUM_AGP_MAJOR || (major == MINIMUM_AGP_MAJOR && minor >= MINIMUM_AGP_MINOR)) return null
+    return "The icon banner plugin needs Android Gradle Plugin $MINIMUM_AGP_MAJOR.$MINIMUM_AGP_MINOR " +
+        "or newer, but this build uses $major.$minor.$micro. It is written against the AGP 9 variant " +
+        "API with no compatibility shims, so on an older AGP it fails with a class-loading error " +
+        "rather than anything actionable. Upgrade AGP, or remove the plugin from this module."
+}
+
+private const val MINIMUM_AGP_MAJOR = 9
+private const val MINIMUM_AGP_MINOR = 3
 
 /**
  * Build type, then product flavors in dimension order, then the project-level defaults. AGP returns

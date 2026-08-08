@@ -16,7 +16,7 @@ internal class Ribbon(
 ) {
 
     /** Shorter viewport edge; the unit everything normalises against. */
-    private val s: Double = minOf(viewportWidth, viewportHeight)
+    val s: Double = minOf(viewportWidth, viewportHeight)
 
     /** Band width, measured perpendicular to the ribbon. */
     val bandWidth: Double = heightPercent / 100.0 * s

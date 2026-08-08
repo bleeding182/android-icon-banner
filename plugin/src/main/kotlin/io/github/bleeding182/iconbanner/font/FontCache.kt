@@ -34,7 +34,12 @@ internal class FontCache(private val root: Path) {
     private val urlsDirectory: Path get() = root.resolve("urls")
     private val filesDirectory: Path get() = root.resolve("files")
 
-    /** The resolved TrueType URL recorded for [spec], or null when it has never been resolved here. */
+    /**
+     * The resolved TrueType URL recorded for [spec], or null when it has never been resolved here.
+     *
+     * This is a string out of a file on disk, not a value the current build produced, so callers must
+     * put it past [GoogleFontProvider]'s origin check before fetching it.
+     */
     fun resolvedUrl(spec: FontSpec): String? {
         val file = urlsDirectory.resolve(specKey(spec) + ".url")
         return try {

@@ -10,75 +10,143 @@ on:
         required: false
         default: "0.0.1-SNAPSHOT"
 
-permissions:
-  contents: read
-  packages: write # GITHUB_TOKEN is enough to publish; no personal access token needed.
+# Nothing workflow-wide: `packages: write` here would hand the token to the Portal job too.
+permissions: {}
+
+# One publish at a time, repository-wide. Two tags pushed together would otherwise upload
+# concurrently, and a Plugin Portal version cannot be replaced once it exists. A queued run waits
+# instead of being cancelled, because cancelling mid-upload is the one state with no recovery.
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
   # Snapshots and releases both land here. Reading them needs a read:packages token, which is why
   # the Plugin Portal below is the one consumers are meant to use.
   packages:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GITHUB_TOKEN is enough to publish; no personal access token needed.
+    outputs:
+      # The single source of truth for what this run publishes; the portal job consumes it rather
+      # than deriving the version a second time from the ref.
+      version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
-          java-version: 21
+          # The floor the plugin supports, so the release path runs on it too. The bytecode level
+          # itself comes from the toolchain in plugin/build.gradle.kts, not from this.
+          java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          # Default is already true for v4; pinned explicitly so a future bump cannot drop it. This
+          # checks the checked-in gradle-wrapper.jar against known-good hashes, which is a different
+          # guarantee from distributionSha256Sum in gradle-wrapper.properties (that one pins the
+          # distribution the wrapper downloads).
+          validate-wrappers: true
 
       - name: Require an Android SDK
         run: |
           test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
             || { echo "No Android SDK on this runner; the functional tests would silently skip."; exit 1; }
 
-      # A tag publishes its own version; a manual run publishes whatever it was given.
+      # A tag publishes its own version; a manual run publishes whatever it was given. The input is
+      # attacker-controllable text, so it goes through the environment rather than being interpolated
+      # into the script, and is checked before it reaches a command line.
       - name: Resolve the version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            version="${{ inputs.version }}"
+            version="$INPUT_VERSION"
           fi
+          case "$version" in
+            "" | *[!A-Za-z0-9._-]* )
+              echo "Refusing to publish '$version': expected only [A-Za-z0-9._-]." >&2
+              exit 1
+              ;;
+          esac
           echo "value=$version" >> "$GITHUB_OUTPUT"
           echo "Publishing $version"
 
       - name: Test before publishing
-        run: ./gradlew -p plugin build -PpluginVersion=${{ steps.version.outputs.value }}
-
-      - name: Publish to GitHub Packages
-        run: >
-          ./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
-          -PpluginVersion=${{ steps.version.outputs.value }}
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: ./gradlew -p plugin build -PpluginVersion="$VERSION"
 
-  # Tags only: the Portal rejects SNAPSHOT versions, and a published version cannot be replaced.
-  portal:
-    if: github.ref_type == 'tag'
-    needs: packages
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Require an Android SDK
+      # Guards the JDK floor: AGP 9 supports JDK 17, so a jar compiled to anything above class-file
+      # major 61 is unusable on a supported daemon. Cheaper to fail here than to burn a version.
+      - name: Assert the bytecode targets JDK 17
         run: |
-          test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
-            || { echo "No Android SDK on this runner; the functional tests would silently skip."; exit 1; }
+          mapfile -t jars < <(find plugin/build/libs -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar')
+          test "${#jars[@]}" -eq 1 || { echo "Expected one plugin jar, found: ${jars[*]:-none}"; exit 1; }
+          jar="${jars[0]}"
+          mapfile -t classes < <(unzip -Z1 "$jar" '*.class' | sed 's/\.class$//; s|/|.|g')
+          test "${#classes[@]}" -gt 0 || { echo "No classes in $jar."; exit 1; }
+          majors="$(javap -verbose -cp "$jar" "${classes[@]}" | awk '/major version/ { print $3 }' | sort -u | tr '\n' ' ')"
+          echo "$jar: class-file major version(s): $majors"
+          test "$majors" = "61 " || { echo "Expected class-file major 61 (JDK 17) only."; exit 1; }
 
-      - name: Publish to the Gradle Plugin Portal
-        run: ./gradlew -p plugin publishPlugins -PpluginVersion=${GITHUB_REF_NAME#v}
+      # Runs the Portal's own checks on the artifacts and metadata without uploading anything, so a
+      # release the Portal would refuse fails before anything has been published anywhere — a Portal
+      # version cannot be replaced, and GitHub Packages returns 409 for an existing release version,
+      # which makes a re-run after a partial failure unpleasant. --validate-only uploads nothing but
+      # the plugin-publish plugin still demands the credentials, so they are scoped to this one step.
+      # Only for a tag push: --validate-only rejects -SNAPSHOT versions outright, and a tag push is
+      # exactly when the portal job below runs.
+      - name: Validate the Plugin Portal release
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
+          VERSION: ${{ steps.version.outputs.value }}
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: ./gradlew -p plugin publishPlugins --validate-only -PpluginVersion="$VERSION"
+
+      - name: Publish to GitHub Packages
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          ./gradlew -p plugin publishAllPublicationsToGitHubPackagesRepository
+          -PpluginVersion="$VERSION"
+
+  # Tag pushes only: the Portal rejects SNAPSHOT versions, and a published version cannot be
+  # replaced. `github.ref_type == 'tag'` alone is not enough — the workflow_dispatch ref picker lists
+  # tags, so a manual run started on a tag would publish the tag version here while the job above
+  # published the dispatch input: two versions from one run, and this one unrepeatable.
+  portal:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          validate-wrappers: true
+
+      # No Android SDK check here: publishPlugins builds and uploads the artifacts, it runs no
+      # tests, and every avoidable step before an irreversible upload is one more way to end up in
+      # the "GitHub Packages published, Portal not" state.
+      - name: Publish to the Gradle Plugin Portal
+        env:
+          VERSION: ${{ needs.packages.outputs.version }}
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: ./gradlew -p plugin publishPlugins -PpluginVersion="$VERSION"

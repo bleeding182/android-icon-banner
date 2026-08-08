@@ -16,7 +16,7 @@ import kotlin.test.fail
  * Roboto Mono 700, the same face the plugin's default font configuration resolves to, checked in so
  * the suite never touches the network.
  */
-val testFont: File by lazy {
+internal val testFont: File by lazy {
     val url = TestResources::class.java.getResource("/font/RobotoMono-Bold.ttf")
         ?: error("Test font missing from src/test/resources/generator/font")
     File(url.toURI())
@@ -24,7 +24,7 @@ val testFont: File by lazy {
 
 private object TestResources
 
-fun readTestResource(path: String): String =
+internal fun readTestResource(path: String): String =
     TestResources::class.java.getResourceAsStream("/generator/$path")
         ?.use { it.readBytes().toString(Charsets.UTF_8) }
         ?: error("Missing test resource generator/$path")
@@ -33,7 +33,7 @@ fun readTestResource(path: String): String =
  * A [ResourceLookup] over a plain map, which is all the generator needs: the Gradle layer is
  * responsible for source-set precedence, and by the time a lookup reaches here that is settled.
  */
-class FakeResources : ResourceLookup {
+internal class FakeResources : ResourceLookup {
 
     private val files = mutableMapOf<ResourceRef, MutableList<SourceResource>>()
 
@@ -59,7 +59,7 @@ class FakeResources : ResourceLookup {
         files[ref]?.reversed().orEmpty()
 }
 
-fun style(
+internal fun style(
     text: String = "DEV",
     color: String = "#FFE91E63",
     textColor: String = "#FFFFFFFF",
@@ -67,26 +67,26 @@ fun style(
     heightPercent: Double = 20.0,
 ): BannerStyle = BannerStyle(text, color, textColor, corner, heightPercent)
 
-fun request(
+internal fun request(
     resources: FakeResources,
     style: BannerStyle = style(),
     icon: ResourceRef = ResourceRef("mipmap", "ic_launcher"),
     roundIcon: ResourceRef? = null,
 ): BannerRequest = BannerRequest(style, testFont, icon, roundIcon, resources)
 
-fun generate(request: BannerRequest): GenerationResult = DefaultBannerGenerator().generate(request)
+internal fun generate(request: BannerRequest): GenerationResult = DefaultBannerGenerator().generate(request)
 
-fun GenerationResult.success(): GenerationResult.Success = when (this) {
+internal fun GenerationResult.success(): GenerationResult.Success = when (this) {
     is GenerationResult.Success -> this
     is GenerationResult.Failure -> fail("Expected success but generation failed: $message")
 }
 
-fun GenerationResult.failureMessage(): String = when (this) {
+internal fun GenerationResult.failureMessage(): String = when (this) {
     is GenerationResult.Failure -> message
     is GenerationResult.Success -> fail("Expected a failure but generation succeeded with ${files.keys}")
 }
 
-fun assertMessageContains(message: String, vararg fragments: String) {
+internal fun assertMessageContains(message: String, vararg fragments: String) {
     fragments.forEach { fragment ->
         assertTrue(fragment in message, "Expected \"$fragment\" in failure message, but was: $message")
     }
@@ -102,7 +102,7 @@ fun assertMessageContains(message: String, vararg fragments: String) {
  * rather than a flag, because a flag that rewrites every expectation at once is how a real
  * regression gets rubber-stamped.
  */
-fun assertMatchesGolden(goldenName: String, actual: String) {
+internal fun assertMatchesGolden(goldenName: String, actual: String) {
     // Working directory of the Gradle test JVM is the plugin project directory.
     val source = File("src/test/resources/generator/golden/$goldenName").absoluteFile
     if (!source.isFile) {

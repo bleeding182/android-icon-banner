@@ -137,6 +137,55 @@ abstract class BannerGeneratorTestCases {
             .toList()
 
     @Test
+    fun `text squeezed past readability warns without failing`() {
+        // The auto-fit has no floor: eleven characters in a band sized for three still "fit", at a
+        // cap height of about 4.6 of 108 — roughly 3dp on a launcher icon, which is a smear. Only
+        // the user can decide whether that text is worth the size, so this warns rather than fails.
+        val result = generate(
+            request(
+                FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
+                style(text = "STAGING RC1"),
+                icon = DRAWABLE_ICON,
+            )
+        ).success()
+
+        val warning = result.warnings.single()
+        assertTrue("STAGING RC1" in warning, warning)
+        assertTrue("11 characters" in warning, warning)
+        // The size it landed at, and what that means on a device, both in the message.
+        assertTrue("4.5" in warning || "4.6" in warning, warning)
+        assertTrue("dp" in warning, warning)
+        assertTrue(result.files.isNotEmpty(), "the banner should still have been generated")
+    }
+
+    @Test
+    fun `text that fits legibly does not warn`() {
+        for (text in listOf("QA", "DEV", "DEBUG", "STAGING")) {
+            val result = generate(
+                request(
+                    FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
+                    style(text = text),
+                    icon = DRAWABLE_ICON,
+                )
+            ).success()
+            assertEquals(emptyList(), result.warnings, "\"$text\" should be legible at the default height")
+        }
+    }
+
+    @Test
+    fun `one illegible text warns once, not once per icon file`() {
+        // An adaptive icon fits the same text three times over: foreground, monochrome, and each
+        // qualifier variant. Three identical warnings would read as three separate problems.
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
+            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
+            .xml("drawable-v24/ic_launcher_foreground.xml", input("foreground_groups.xml"))
+        val result = generate(request(resources, style(text = "STAGING RC1"))).success()
+
+        assertEquals(1, result.warnings.size, result.warnings.toString())
+    }
+
+    @Test
     fun `text is rendered verbatim rather than uppercased`() {
         assertMatchesGolden("text_mixed_case.xml", plainVector(style(text = "dev")))
     }

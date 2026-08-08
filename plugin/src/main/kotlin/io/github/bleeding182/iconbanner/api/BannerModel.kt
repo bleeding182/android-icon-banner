@@ -7,23 +7,29 @@ package io.github.bleeding182.iconbanner.api
  *
  * Nothing in this package may reference Gradle or AGP types. The generator is exercised in tests
  * without a build, and that only stays true if this boundary holds.
+ *
+ * Everything here is `internal` except [BannerCorner]. These types exist as a testing seam, not as a
+ * consumer-facing API: a plugin's classes land on every consuming buildscript's classpath, and
+ * anything public there is a binary-compatibility promise nobody asked us to make. Tests in this
+ * project see internals, so the seam still works. [BannerCorner] is the one exception, because the
+ * DSL hands it to build scripts.
  */
 
 /** Which corner of the icon the ribbon occupies. */
 enum class BannerCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
 
 /** Identifies a Google Font face. Maps onto the `wght` and `ital` axes of the CSS API. */
-data class FontSpec(
+internal data class FontSpec(
     val family: String,
     val weight: Int,
     val italic: Boolean,
 )
 
 /** A fully resolved banner appearance. Every value here has already been merged and defaulted. */
-data class BannerStyle(
+internal data class BannerStyle(
     /** Rendered verbatim. May be empty, which means a ribbon with no text. */
     val text: String,
-    /** Ribbon fill. A hex literal, or a `@color/...` / `?attr/...` reference passed straight through. */
+    /** Ribbon fill. A hex literal, or a `@color/...` reference passed straight through. */
     val color: String,
     /** Text fill, same accepted forms as [color]. */
     val textColor: String,
@@ -33,7 +39,7 @@ data class BannerStyle(
 )
 
 /** An Android resource reference, e.g. `@mipmap/ic_launcher` becomes `ResourceRef("mipmap", "ic_launcher")`. */
-data class ResourceRef(val type: String, val name: String) {
+internal data class ResourceRef(val type: String, val name: String) {
     override fun toString(): String = "@$type/$name"
 
     companion object {
@@ -53,7 +59,7 @@ data class ResourceRef(val type: String, val name: String) {
  * A resource typically has several of these: `drawable/ic_launcher_foreground.xml` and
  * `drawable-v24/ic_launcher_foreground.xml` are two [SourceResource]s of the same [ResourceRef].
  */
-data class SourceResource(
+internal data class SourceResource(
     /** The resource folder name, e.g. `drawable`, `drawable-v24`, `mipmap-anydpi-v26`. */
     val qualifiers: String,
     /** The file name including extension, e.g. `ic_launcher_foreground.xml`. */
@@ -70,7 +76,7 @@ data class SourceResource(
  *
  * Implemented over real directories by the Gradle layer, and over a plain map by tests.
  */
-interface ResourceLookup {
+internal interface ResourceLookup {
     /**
      * Every qualifier variant backing [ref], in no particular order. Empty when the resource does
      * not exist. Includes non-XML files, so callers can tell "exists but is a bitmap" apart from
@@ -80,15 +86,19 @@ interface ResourceLookup {
 }
 
 /** Outcome of generating the bannered resources for one variant. */
-sealed interface GenerationResult {
+internal sealed interface GenerationResult {
     /**
      * @param files resource-root-relative path to file content, ready to be written into the
      *   generated resource directory. Paths reuse the original qualifier folder.
      * @param info human-readable notes worth logging, such as which resources were displaced.
+     * @param warnings things the user probably did not intend but that are not worth failing over.
+     *   Separate from [info] because the generator must not reach for Gradle's logger, and these
+     *   need a louder level than the routine notes.
      */
     data class Success(
         val files: Map<String, String>,
         val info: List<String> = emptyList(),
+        val warnings: List<String> = emptyList(),
     ) : GenerationResult
 
     /** The banner could not be produced. [message] is shown to the user as the build failure. */
@@ -99,12 +109,12 @@ sealed interface GenerationResult {
  * The pure seam. Given a style, a font file and read access to the app's resources, produces the
  * complete set of resource files to emit. No Gradle, no network, no filesystem writes.
  */
-interface BannerGenerator {
+internal interface BannerGenerator {
     fun generate(request: BannerRequest): GenerationResult
 }
 
 /** Everything [BannerGenerator] needs. */
-data class BannerRequest(
+internal data class BannerRequest(
     val style: BannerStyle,
     /** A local TrueType file. Already downloaded; the generator never fetches anything. */
     val fontFile: java.io.File,
@@ -116,6 +126,6 @@ data class BannerRequest(
 )
 
 /** Supplies a local TrueType file for a [FontSpec], downloading and caching as needed. */
-interface FontProvider {
+internal interface FontProvider {
     fun resolve(spec: FontSpec): java.io.File
 }

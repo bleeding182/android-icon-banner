@@ -15,7 +15,7 @@ import org.w3c.dom.Element
  * TrueType font it is handed. Everything the plugin can get wrong about geometry, XML rewriting and
  * number formatting is reachable from here with a plain unit test.
  */
-class DefaultBannerGenerator : BannerGenerator {
+internal class DefaultBannerGenerator : BannerGenerator {
 
     override fun generate(request: BannerRequest): GenerationResult = try {
         Session(request).run()
@@ -45,6 +45,12 @@ private class Session(private val request: BannerRequest) {
     private val outputs = sortedMapOf<String, String>()
     private val info = mutableListOf<String>()
 
+    /**
+     * A set, not a list: the same text is fitted once per qualifier variant of the icon, and one
+     * illegibility complaint per build is plenty.
+     */
+    private val warnings = linkedSetOf<String>()
+
     private val painter: BannerPainter by lazy {
         val font = try {
             BannerText(request.fontFile)
@@ -57,7 +63,7 @@ private class Session(private val request: BannerRequest) {
                     "text \"${style.text}\". Choose a font that covers it, or change the text."
             )
         }
-        BannerPainter(style, font)
+        BannerPainter(style, font, warnings)
     }
 
     fun run(): GenerationResult {
@@ -66,7 +72,11 @@ private class Session(private val request: BannerRequest) {
         painter
         val icons = listOfNotNull(request.icon, request.roundIcon).distinct()
         icons.forEach(::processIcon)
-        return GenerationResult.Success(files = outputs.toMap(), info = info.toList())
+        return GenerationResult.Success(
+            files = outputs.toMap(),
+            info = info.toList(),
+            warnings = warnings.toList(),
+        )
     }
 
     private fun processIcon(ref: ResourceRef) {

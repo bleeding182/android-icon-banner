@@ -86,18 +86,14 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         val roots = resourceDirectories.get().map { it.asFile }
         val resources = DirectoryResourceLookup(roots)
         val declared = ManifestIcons.read(manifestFiles.get().map { it.asFile })
-
-        // A round icon nobody declared is only a convention. Do not make the generator fail over a
-        // resource the user never asked for; a declared one that is missing must still fail.
-        val roundIcon = declared.roundIcon
-            ?.takeUnless { declared.roundIsFallback && resources.find(it).isEmpty() }
+        val roundIcon = declared.roundIconToBanner(resources)
 
         val style = BannerStyle(
             text = text.get(),
             color = ColorFormat.check(color.get(), "color", variant),
             textColor = ColorFormat.check(textColor.get(), "textColor", variant),
             corner = corner.get(),
-            heightPercent = height.get().toDouble(),
+            heightPercent = BannerHeight.check(height.get(), variant).toDouble(),
         )
 
         val output = outputDirectory.get().asFile
@@ -125,9 +121,20 @@ abstract class IconBannerGenerateTask : DefaultTask() {
                     file.parentFile?.mkdirs()
                     file.writeText(content)
                 }
-                // The override is otherwise completely silent — no merger message, no lint warning.
-                // This is the only way a user learns their hand-edited icon was replaced.
+                // One visible line per bannered variant. The worst thing this plugin can do to a
+                // user is banner a release build unnoticed, which a project-level
+                // `iconBanner { text = "…" }` does to every variant — and the override itself is
+                // completely silent: no merger message, no lint warning. At `info` nobody sees it.
+                logger.lifecycle(
+                    "icon banner: variant '{}' replaces {} with a \"{}\" bannered copy",
+                    variant,
+                    declared.icon,
+                    style.text,
+                )
+                // Which files were displaced, and how, stays at info: it is the detail behind that
+                // line rather than something every build needs to print.
                 for (note in result.info) logger.info("icon banner ($variant): {}", note)
+                for (warning in result.warnings) logger.warn("icon banner ($variant): {}", warning)
             }
         }
     }
