@@ -71,7 +71,7 @@ class MultiBannerGeneratorTest {
 
     @Test
     fun `monochrome wraps each banner in a group of its own, nested`() {
-        val monochrome = adaptiveIcon(main(), sha()).files.getValue(MONO_PATH)
+        val monochrome = adaptiveIcon(main(), sha()).xml(MONO_PATH)
         assertMatchesGolden("multi_opposite_corners_monochrome.xml", monochrome)
 
         val root = AndroidXml.parse(monochrome, MONO_PATH).documentElement
@@ -91,7 +91,7 @@ class MultiBannerGeneratorTest {
 
     @Test
     fun `both even-odd paths sit at the root, after every group`() {
-        val monochrome = adaptiveIcon(main(), sha()).files.getValue(MONO_PATH)
+        val monochrome = adaptiveIcon(main(), sha()).xml(MONO_PATH)
         val root = AndroidXml.parse(monochrome, MONO_PATH).documentElement
 
         assertEquals(listOf("group", "path", "path"), root.childElements().map { it.localNameOrTag() })
@@ -108,9 +108,9 @@ class MultiBannerGeneratorTest {
 
     @Test
     fun `each banner's punched path matches its own band`() {
-        val files = adaptiveIcon(main(), sha()).files
-        val coloured = files.getValue(FOREGROUND_PATH)
-        val monochrome = files.getValue(MONO_PATH)
+        val result = adaptiveIcon(main(), sha())
+        val coloured = result.xml(FOREGROUND_PATH)
+        val monochrome = result.xml(MONO_PATH)
 
         // Every coloured band reappears verbatim, so no hole drifted off its band.
         for (fill in listOf(MAIN_FILL, SHA_FILL)) {
@@ -120,16 +120,16 @@ class MultiBannerGeneratorTest {
 
     @Test
     fun `each banner punches at its own monochromeAlpha`() {
-        val files = adaptiveIcon(main(), sha(monochromeAlphaPercent = 80.0)).files
+        val result = adaptiveIcon(main(), sha(monochromeAlphaPercent = 80.0))
 
         assertEquals(
             listOf("#FFFFFFFF", "#CCFFFFFF"),
-            fillColorsOf(files.getValue(MONO_PATH)).takeLast(2),
+            fillColorsOf(result.xml(MONO_PATH)).takeLast(2),
         )
         // The coloured layer has its own colours and never sees this.
         assertEquals(
             listOf(MAIN_FILL, MAIN_TEXT_FILL, SHA_FILL, SHA_TEXT_FILL),
-            fillColorsOf(files.getValue(FOREGROUND_PATH)).takeLast(4),
+            fillColorsOf(result.xml(FOREGROUND_PATH)).takeLast(4),
         )
     }
 

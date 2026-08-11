@@ -6,6 +6,7 @@ import com.android.build.api.variant.DslExtension
 import com.android.build.api.variant.VariantExtensionConfig
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 
 /** The name of the `iconBanner { }` block in all three DSL slots. */
 internal const val DSL_NAME = "iconBanner"
@@ -32,8 +33,12 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
         IconBannerVariantExtension(mergeBanner(precedenceChain(config)))
     }
 
+    // Here rather than beside the tasks it feeds: a build script's `dependencies { }` block runs long
+    // before AGP hands out variants, and pinning another reader version has to be possible from there.
+    val imageReaders = imageReaderConfiguration(project)
+
     components.onVariants(components.selector().all()) { variant ->
-        configureVariant(project, variant)
+        configureVariant(project, variant, imageReaders)
     }
 }
 
@@ -67,7 +72,11 @@ private fun precedenceChain(config: VariantExtensionConfig<out ApplicationVarian
         config.projectExtension(IconBannerDsl::class.java)?.let(::add)
     }
 
-private fun configureVariant(project: Project, variant: ApplicationVariant) {
+private fun configureVariant(
+    project: Project,
+    variant: ApplicationVariant,
+    imageReaders: Configuration,
+) {
     // Decided at configuration time from assignment alone.
     val resolved = variant.getExtension(IconBannerVariantExtension::class.java)?.banners.orEmpty()
     if (resolved.isEmpty()) return
@@ -132,6 +141,8 @@ private fun configureVariant(project: Project, variant: ApplicationVariant) {
     generateTask.configure {
         group = TASK_GROUP
         description = "Generates the bannered launcher icon resources for $variantNameValue."
+        imageReaderClasspath.setFrom(imageReaderFiles(imageReaders))
+        imageReaderCoordinates.set(declaredImageReaderCoordinates(project, imageReaders))
         variantName.set(variantNameValue)
         banners.set(bannerInputs)
         fontDirectory.set(fontTask.flatMap { it.outputDirectory })

@@ -5,9 +5,11 @@ import io.github.bleeding182.iconbanner.api.BannerLayer
 import io.github.bleeding182.iconbanner.api.BannerRequest
 import io.github.bleeding182.iconbanner.api.BannerStyle
 import io.github.bleeding182.iconbanner.api.FontSpec
+import io.github.bleeding182.iconbanner.api.GeneratedFile
 import io.github.bleeding182.iconbanner.api.GenerationResult
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.Directory
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileSystemOperations
@@ -18,6 +20,7 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
@@ -61,6 +64,24 @@ abstract class IconBannerGenerateTask : DefaultTask() {
     @get:Input
     abstract val resourceDirectoryOrder: ListProperty<String>
 
+    /**
+     * The readers for bitmap icons, `@Internal` on purpose: as an input it would be fingerprinted, and
+     * so resolved, on every run of this task — including for a project whose icons are all vectors and
+     * which decodes nothing at all. The collection stays lazy for the same reason, and resolution then
+     * waits for the first bitmap the JDK cannot read. The configuration cache is the exception, and
+     * [imageReaderFiles] records what that costs and why the view is lenient.
+     *
+     * [imageReaderCoordinates] is the tracked half of the pair, so a change of reader version still
+     * refingerprints the task even though the files themselves are not watched. On its own each half
+     * looks wrong.
+     */
+    @get:Internal
+    abstract val imageReaderClasspath: ConfigurableFileCollection
+
+    /** @see imageReaderClasspath */
+    @get:Input
+    abstract val imageReaderCoordinates: ListProperty<String>
+
     @get:Input
     abstract val variantName: Property<String>
 
@@ -94,6 +115,9 @@ abstract class IconBannerGenerateTask : DefaultTask() {
                 icon = declared.icon,
                 roundIcon = roundIcon,
                 resources = resources,
+                codecs = ClasspathImageCodecs(variant, imageReaderCoordinates.get()) {
+                    imageReaderClasspath.files
+                },
             )
         )
 
@@ -102,10 +126,13 @@ abstract class IconBannerGenerateTask : DefaultTask() {
             is GenerationResult.Failure ->
                 throw GradleException("icon banner ($variant): ${result.message}")
             is GenerationResult.Success -> {
-                for ((relativePath, content) in result.files) {
+                for ((relativePath, generated) in result.files) {
                     val file = output.resolve(relativePath)
                     file.parentFile?.mkdirs()
-                    file.writeText(content)
+                    when (generated) {
+                        is GeneratedFile.Text -> file.writeText(generated.content)
+                        is GeneratedFile.Binary -> file.writeBytes(generated.bytes)
+                    }
                 }
                 // Lifecycle, not info: bannering a release build unnoticed is the worst thing this can do.
                 logger.lifecycle(

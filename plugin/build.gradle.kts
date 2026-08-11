@@ -20,6 +20,13 @@ dependencies {
     // AGP variant API. compileOnly: the consuming build always brings its own AGP.
     compileOnly("com.android.tools.build:gradle-api:9.3.1")
 
+    // The WebP reader, as WEBP_READER_COORDINATES pins it. Test-only on purpose: a consuming build
+    // resolves it from its own project, so this must never reach the plugin's runtime classpath.
+    // It puts a genuine webp within reach of the pure generator's tests, and does not leak into the
+    // TestKit builds — pluginUnderTestMetadata is built from the main runtime classpath, so those
+    // still exercise the real lazy resolution.
+    testImplementation("com.twelvemonkeys.imageio:imageio-webp:3.14.0")
+
     testImplementation(kotlin("test"))
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

@@ -58,8 +58,10 @@ abstract class IconBannerOptions @Inject constructor(objects: ObjectFactory) {
         }
 
     /**
-     * Ribbon fill: a hex literal or `@color/...`. Not `?attr/...` — a launcher inflates the icon
-     * without a theme, so the build fails rather than ship one that will not load.
+     * Ribbon fill: a hex literal, `#RGB`, `#ARGB`, `#RRGGBB` or `#AARRGGBB`. The plugin has to paint the
+     * value itself to raster an icon, so nothing it cannot parse is accepted — `?attr/...` least of all,
+     * since a launcher inflates the icon without a theme and the build fails rather than ship one that
+     * will not load.
      */
     abstract val color: Property<String>
 

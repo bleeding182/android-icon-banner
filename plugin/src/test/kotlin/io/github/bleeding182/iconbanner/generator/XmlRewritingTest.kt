@@ -16,7 +16,7 @@ class XmlRewritingTest {
     private fun banner(vector: String): String {
         val resources = FakeResources().xml("drawable/ic_launcher.xml", vector)
         return generate(request(resources, style(), icon = icon)).success()
-            .files.getValue("drawable/ic_launcher.xml")
+            .xml("drawable/ic_launcher.xml")
     }
 
     @Test

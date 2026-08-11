@@ -9,9 +9,9 @@ plugin — see the [README](../README.md) for that. Design decisions and their r
 The plugin reads `android:icon` and `android:roundIcon` from the merged manifest, falling back to
 the conventional `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round` when neither is declared. It
 follows an adaptive icon to its foreground vector — or banners a plain `<vector>` launcher icon
-directly, if that is what you have — and writes the bannered copy into a generated resource
-directory under the **same** resource name. AGP's resource merger orders generated resources last,
-so the copy wins over the one in `main`, in a flavor, or in a build type.
+directly, or the bitmaps behind a legacy one, whichever you have — and writes the bannered copy into
+a generated resource directory under the **same** resource name. AGP's resource merger orders
+generated resources last, so the copy wins over the one in `main`, in a flavor, or in a build type.
 
 Your source tree is never modified. Remove the plugin, or the `text` for a variant, and the original
 icon is back — there is nothing to clean up outside `build/`.
@@ -124,6 +124,9 @@ them are in place are the even-odd ribbon paths appended at the root, in paint o
 appended earlier would be swallowed by the next banner's group and cut out by the very clip meant to
 protect the artwork from it.
 
+All of that is the vector rewrite. A themed *bitmap* reaches the same cutout in pixels instead — see
+[Raster icons](#raster-icons).
+
 Where that output lands depends on your icon. When `<monochrome>` has its own drawable it is
 bannered in place, under its own name, and the adaptive icon is left alone. When `<monochrome>` and
 `<foreground>` point at the *same* drawable — the Android Studio template does this — the two need
@@ -168,9 +171,39 @@ Apache-2.0 families where the question is less settled.
 
 ## Raster icons
 
-Legacy raster mipmaps (`mipmap-*/ic_launcher.webp`) are skipped, so a device below API 26 shows the
-unmodified icon. If a variant asks for a banner and there is no vector icon at all, the build fails
-rather than silently shipping an unmarked one.
+Legacy raster mipmaps (`mipmap-*/ic_launcher.webp`) are bannered too, so a device below API 26 shows a
+marked icon rather than the production one. The file is decoded, the banner is composited straight into
+its pixels, and the result is written under the same resource name in the same qualifier folder — every
+density gets its own bannered copy.
+
+The output is always a **PNG**, because the JDK can write that and not WebP: `mipmap-hdpi/ic_launcher.webp`
+comes back as `mipmap-hdpi/ic_launcher.png`. The extension is not part of a resource's identity, so that
+is still a clean override and the original webp is never compiled into the APK.
+
+A standalone legacy icon is drawn by the launcher with no mask of its own, so the band is clipped to the
+icon's **own alpha**: a round `ic_launcher_round` keeps its silhouette instead of growing a triangle
+where the corner used to be. A bitmap that an adaptive icon's layer points at is not clipped that way —
+the system masks that layer already, and an adaptive foreground is usually a logo on a large transparent
+surround, where clipping to the artwork would erase most of the band.
+
+Themed bitmaps work as the vector ones do, by subtraction rather than by an `evenOdd` fill: the band is
+cleared out of the pixels and filled back in at `monochromeAlpha` with the glyphs left as holes. The
+cutout comes out the same, counters and all.
+
+Reading WebP needs a decoder the JDK does not ship. The plugin fetches one
+(`com.twelvemonkeys.imageio:imageio-webp`, about 580 KB) from your project's own repositories, and only
+once the JDK has actually failed on one of your bitmaps — an icon that is all vectors or all PNG never
+asks for it. See the README's [Limitations](../README.md#limitations) for what that means for a project
+with no `mavenCentral()`.
+
+A nine-patch is skipped, and so is a file no available reader can decode; each says so with a warning
+naming the file. Only when *nothing* in an icon could be bannered — no vector, no usable bitmap — does
+the build fail rather than silently shipping an unmarked icon.
+
+One thing to expect rather than to debug: the sizes are percentages of the icon's own edge, and a legacy
+icon's whole edge is visible where an adaptive icon's 108 units are cropped to a 72-unit mask. The same
+`maxTextSize` therefore reads about 1.5× smaller on a legacy icon — 6.2dp against 9.4dp at the default —
+which is exactly the treatment a plain non-adaptive `<vector>` icon has always had.
 
 ## Versions
 

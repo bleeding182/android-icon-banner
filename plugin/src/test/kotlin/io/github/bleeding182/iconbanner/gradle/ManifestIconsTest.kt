@@ -76,13 +76,15 @@ class ManifestIconsTest {
     )
 
     @Test
-    fun `an invented round icon backed only by rasters is dropped`() {
+    fun `an invented round icon backed only by rasters is kept`() {
         // An app that never migrated still ships legacy per-density ic_launcher_round, with no XML.
+        // The rasters get the banner composited in, and a launcher that asks for the round variant
+        // must not come back with an unmarked icon.
         val resources = FakeResources()
             .raster("mipmap-hdpi/ic_launcher_round.webp")
             .raster("mipmap-xxhdpi/ic_launcher_round.webp")
 
-        assertNull(invented.roundIconToBanner(resources))
+        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
     }
 
     @Test
@@ -97,6 +99,29 @@ class ManifestIconsTest {
     @Test
     fun `an invented round icon that resolves to nothing is dropped`() {
         assertNull(invented.roundIconToBanner(FakeResources()))
+    }
+
+    /**
+     * A name nobody declared must not be what fails a build. Every file backing it being unbannerable
+     * is exactly what the generator fails on, so picking it up on mere existence turned a round icon
+     * that used to be quietly ignored into a hard error.
+     */
+    @Test
+    fun `an invented round icon backed only by nine-patches is dropped`() {
+        val resources = FakeResources()
+            .raster("mipmap-hdpi/ic_launcher_round.9.png")
+            .raster("mipmap-xxhdpi/ic_launcher_round.9.png")
+
+        assertNull(invented.roundIconToBanner(resources))
+    }
+
+    @Test
+    fun `an invented round icon with one bannerable file among nine-patches is kept`() {
+        val resources = FakeResources()
+            .raster("mipmap-hdpi/ic_launcher_round.9.png")
+            .raster("mipmap-xxhdpi/ic_launcher_round.webp")
+
+        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceLookup
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import io.github.bleeding182.iconbanner.api.SourceResource
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.XMLConstants
@@ -14,12 +15,18 @@ internal data class DeclaredIcons(val icon: ResourceRef, val roundIcon: Resource
      * The round icon worth bannering, or null.
      *
      * A declared one is passed through, so a broken declaration still fails loudly. The conventional
-     * `ic_launcher_round` is only picked up when it actually exists.
+     * `ic_launcher_round` is only picked up when it actually exists — in any form, raster included: a
+     * launcher that asks for the round variant must not come back with an unmarked icon.
+     *
+     * "Exists" means a file a banner could go on, not merely a file. A name nobody declared must not be
+     * what fails a build, and every file backing it being unbannerable is exactly what the generator
+     * fails on: a round icon that is only `ic_launcher_round.9.png` used to be ignored and would
+     * otherwise now be a hard error nobody asked for.
      */
     fun roundIconToBanner(resources: ResourceLookup): ResourceRef? {
         val round = roundIcon ?: return null
         if (!roundIsFallback) return round
-        return round.takeIf { resources.find(it).any { source -> source.xml != null } }
+        return round.takeIf { resources.find(it).any(SourceResource::isBannerable) }
     }
 }
 

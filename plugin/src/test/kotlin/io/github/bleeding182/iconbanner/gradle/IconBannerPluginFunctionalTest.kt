@@ -8,6 +8,7 @@ import io.github.bleeding182.iconbanner.api.FontSpec
 import io.github.bleeding182.iconbanner.api.GenerationResult
 import io.github.bleeding182.iconbanner.api.ResourceRef
 import io.github.bleeding182.iconbanner.generator.DefaultBannerGenerator
+import io.github.bleeding182.iconbanner.generator.xml
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -84,7 +85,7 @@ class IconBannerPluginFunctionalTest {
             )
         )
         val success = assertInstanceOf(GenerationResult.Success::class.java, result)
-        return success.files.getValue("drawable/ic_launcher_foreground.xml")
+        return success.xml("drawable/ic_launcher_foreground.xml")
     }
 
     @Test

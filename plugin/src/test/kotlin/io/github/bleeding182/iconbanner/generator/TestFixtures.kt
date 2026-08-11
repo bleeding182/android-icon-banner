@@ -4,11 +4,17 @@ import io.github.bleeding182.iconbanner.api.BannerCorner
 import io.github.bleeding182.iconbanner.api.BannerLayer
 import io.github.bleeding182.iconbanner.api.BannerRequest
 import io.github.bleeding182.iconbanner.api.BannerStyle
+import io.github.bleeding182.iconbanner.api.GeneratedFile
 import io.github.bleeding182.iconbanner.api.GenerationResult
+import io.github.bleeding182.iconbanner.api.ImageCodecs
 import io.github.bleeding182.iconbanner.api.ResourceLookup
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import io.github.bleeding182.iconbanner.api.SourceContent
 import io.github.bleeding182.iconbanner.api.SourceResource
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -20,6 +26,16 @@ import kotlin.test.fail
 internal val testFont: File by lazy {
     val url = TestResources::class.java.getResource("/font/RobotoMono-Bold.ttf")
         ?: error("Test font missing from src/test/resources/generator/font")
+    File(url.toURI())
+}
+
+/**
+ * The demo app's own hdpi launcher icon, checked in: a real 72px WebP in the extended format Android
+ * Studio's template emits, VP8 lossy with its alpha in a separate `ALPH` chunk.
+ */
+internal val webpIcon: File by lazy {
+    val url = TestResources::class.java.getResource("/generator/input/ic_launcher.webp")
+        ?: error("Test webp missing from src/test/resources/generator/input")
     File(url.toURI())
 }
 
@@ -39,6 +55,28 @@ internal const val FOREGROUND_PATH = "drawable/ic_launcher_foreground.xml"
 internal const val MONO_PATH = "drawable/ic_launcher_foreground_iconbanner_mono.xml"
 
 /**
+ * An opaque square PNG, [edge] by [edge], filled with [argb].
+ *
+ * Written through `ImageIO` rather than [RasterIcon]: a fixture that built its input with the encoder
+ * under test could not tell a broken encoder from a broken walk. Opaque because a coloured banner
+ * clipped to the silhouette only lands where the icon already has alpha.
+ */
+internal fun solidPng(edge: Int, argb: Int = 0xFF3DDC84.toInt()): ByteArray {
+    val image = BufferedImage(edge, edge, BufferedImage.TYPE_INT_ARGB)
+    for (y in 0 until edge) for (x in 0 until edge) image.setRGB(x, y, argb)
+    return ByteArrayOutputStream().use { bytes ->
+        ImageIO.write(image, "png", bytes)
+        bytes.toByteArray()
+    }
+}
+
+/**
+ * An opaque 1x1 PNG, encoded once. A genuine image rather than a few arbitrary bytes, so a fixture
+ * raster survives being decoded instead of failing the test it was only meant to stand in for.
+ */
+internal val onePixelPng: ByteArray by lazy { solidPng(1) }
+
+/**
  * A [ResourceLookup] over a plain map, which is all the generator needs: the Gradle layer is
  * responsible for source-set precedence, and by the time a lookup reaches here that is settled.
  */
@@ -47,16 +85,18 @@ internal class FakeResources : ResourceLookup {
     private val files = mutableMapOf<ResourceRef, MutableList<SourceResource>>()
 
     /** Adds an XML file at, for example, `drawable-v24/ic_launcher_foreground.xml`. */
-    fun xml(path: String, content: String): FakeResources = add(path, content)
+    fun xml(path: String, content: String): FakeResources = add(path, SourceContent.Xml(content))
 
-    /** Adds a raster file: present in the lookup, but with no XML for the generator to rewrite. */
-    fun raster(path: String): FakeResources = add(path, null)
+    /** Adds a raster file. [bytes] is a real image by default, so a case that decodes it can. */
+    fun raster(path: String, bytes: ByteArray = onePixelPng): FakeResources =
+        add(path, SourceContent.Raster(bytes))
 
-    private fun add(path: String, content: String?): FakeResources {
+    private fun add(path: String, content: SourceContent): FakeResources {
         val qualifiers = path.substringBeforeLast('/')
         val fileName = path.substringAfterLast('/')
         val type = qualifiers.substringBefore('-')
-        val name = fileName.substringBeforeLast('.')
+        // Up to the *first* dot, as DirectoryResourceLookup does: `ic_launcher.9.png` is `ic_launcher`.
+        val name = fileName.substringBefore('.')
         files.getOrPut(ResourceRef(type, name)) { mutableListOf() }
             .add(SourceResource(qualifiers, fileName, content))
         return this
@@ -93,12 +133,14 @@ internal fun request(
     icon: ResourceRef = ResourceRef("mipmap", "ic_launcher"),
     roundIcon: ResourceRef? = null,
     fontFile: File = testFont,
+    codecs: ImageCodecs = ImageCodecs { _ -> },
 ): BannerRequest = BannerRequest(
     layers = (if (styles.isEmpty()) listOf(style()) else styles.toList())
         .map { BannerLayer(it, fontFile) },
     icon = icon,
     roundIcon = roundIcon,
     resources = resources,
+    codecs = codecs,
 )
 
 internal fun generate(request: BannerRequest): GenerationResult = DefaultBannerGenerator().generate(request)
@@ -107,7 +149,7 @@ internal fun generate(request: BannerRequest): GenerationResult = DefaultBannerG
 internal fun plainVector(vararg styles: BannerStyle): String {
     val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml"))
     return generate(request(resources, *styles, icon = DRAWABLE_ICON))
-        .success().files.getValue("drawable/ic_launcher.xml")
+        .success().xml("drawable/ic_launcher.xml")
 }
 
 /** The default Android Studio shape: adaptive icon whose foreground and monochrome coincide. */
@@ -149,6 +191,38 @@ internal fun glyphPathsOf(output: String): List<String> =
 
 internal fun glyphPathOf(output: String): String =
     glyphPathsOf(output).firstOrNull() ?: error("No glyph path in $output")
+
+/** The XML generated at [path]. */
+internal fun GenerationResult.Success.xml(path: String): String = when (val file = files[path]) {
+    is GeneratedFile.Text -> file.content
+    is GeneratedFile.Binary -> fail("$path was generated as ${file.bytes.size} bytes of binary, not XML")
+    null -> fail("Nothing was generated at $path. Generated: ${files.keys}")
+}
+
+/** The bytes generated at [path]. */
+internal fun GenerationResult.Success.bytes(path: String): ByteArray = when (val file = files[path]) {
+    is GeneratedFile.Binary -> file.bytes
+    is GeneratedFile.Text -> fail("$path was generated as XML, not binary: ${file.content}")
+    null -> fail("Nothing was generated at $path. Generated: ${files.keys}")
+}
+
+/**
+ * Path for path, XML compared as text and bitmaps as bytes.
+ *
+ * Not one `assertEquals` over the two maps: [GeneratedFile.Binary] is deliberately not a data class,
+ * so that comparison silently degrades to identity as soon as a case emits one, and then holds
+ * whatever the bytes say.
+ */
+internal fun assertSameFiles(expected: GenerationResult.Success, actual: GenerationResult.Success) {
+    assertEquals(expected.files.keys, actual.files.keys)
+    expected.files.forEach { (path, file) ->
+        when (file) {
+            is GeneratedFile.Text -> assertEquals(expected.xml(path), actual.xml(path), path)
+            is GeneratedFile.Binary ->
+                assertTrue(expected.bytes(path) contentEquals actual.bytes(path), "$path differs")
+        }
+    }
+}
 
 internal fun GenerationResult.success(): GenerationResult.Success = when (this) {
     is GenerationResult.Success -> this

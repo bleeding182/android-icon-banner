@@ -65,19 +65,20 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `coloured and monochrome output for the same input`() {
-        val files = adaptiveIcon(style()).files
+        val result = adaptiveIcon(style())
         // The same golden as the plain vector: an adaptive icon's foreground *is* that vector.
-        assertMatchesGolden("corner_top_left.xml", files.getValue(FOREGROUND_PATH))
-        assertMatchesGolden("shared_monochrome.xml", files.getValue(MONO_PATH))
+        assertMatchesGolden("corner_top_left.xml", result.xml(FOREGROUND_PATH))
+        assertMatchesGolden("shared_monochrome.xml", result.xml(MONO_PATH))
     }
 
     @Test
     fun `monochromeAlpha becomes the punched fill's alpha, and nothing else`() {
-        val files = adaptiveIcon(style(monochromeAlphaPercent = 80.0)).files
+        val result = adaptiveIcon(style(monochromeAlphaPercent = 80.0))
+        val monochrome = result.xml(MONO_PATH)
 
-        assertTrue("android:fillColor=\"#CCFFFFFF\"" in files.getValue(MONO_PATH), files.toString())
+        assertTrue("android:fillColor=\"#CCFFFFFF\"" in monochrome, monochrome)
         // The coloured layer draws its own colours at their own alpha, so it is the default golden.
-        assertMatchesGolden("corner_top_left.xml", files.getValue(FOREGROUND_PATH))
+        assertMatchesGolden("corner_top_left.xml", result.xml(FOREGROUND_PATH))
     }
 
     @Test
@@ -91,9 +92,9 @@ abstract class BannerGeneratorTestCases {
     fun `the monochrome clip is the complement of the band that was drawn`() {
         // The coloured quad and the monochrome clip are derived separately; if they disagree the
         // artwork bleeds into the ribbon.
-        val files = adaptiveIcon(style(text = "STAGING")).files
-        val coloured = files.getValue(FOREGROUND_PATH)
-        val monochrome = files.getValue(MONO_PATH)
+        val result = adaptiveIcon(style(text = "STAGING"))
+        val coloured = result.xml(FOREGROUND_PATH)
+        val monochrome = result.xml(MONO_PATH)
 
         // The punched path is the coloured layer's exact quad, with the glyphs appended as holes.
         assertTrue("android:pathData=\"${quadPathOf(coloured)} M " in monochrome, monochrome)
@@ -114,9 +115,9 @@ abstract class BannerGeneratorTestCases {
         val resources = FakeResources()
             .xml(ADAPTIVE_PATH, input("adaptive_shared_mono.xml"))
             .xml(FOREGROUND_PATH, input("foreground_groups.xml"))
-        val files = generate(request(resources, style())).success().files
-        assertMatchesGolden("groups_monochrome.xml", files.getValue(MONO_PATH))
-        assertMatchesGolden("groups_coloured.xml", files.getValue(FOREGROUND_PATH))
+        val result = generate(request(resources, style())).success()
+        assertMatchesGolden("groups_monochrome.xml", result.xml(MONO_PATH))
+        assertMatchesGolden("groups_coloured.xml", result.xml(FOREGROUND_PATH))
     }
 
     // ------------------------------------------------------------------- text
@@ -189,9 +190,10 @@ abstract class BannerGeneratorTestCases {
         val warning = result.warnings.single()
         assertTrue("STAGING RC1" in warning, warning)
         assertTrue("11 characters" in warning, warning)
-        // The size it landed at, and what that means on a device, both in the message.
-        assertTrue("5.39" in warning, warning)
-        assertTrue("dp" in warning, warning)
+        // What it means on a device, and nothing in the icon's own units — those differ per density on
+        // a bitmap and would stop one complaint staying one line.
+        assertTrue("3.59dp" in warning, warning)
+        assertTrue("5.39" !in warning, warning)
         // At the default, naming iconBanner.position would cost the middle of the icon.
         assertTrue("shorter text" in warning, warning)
         assertTrue("position" !in warning, warning)
@@ -261,10 +263,10 @@ abstract class BannerGeneratorTestCases {
     // ----------------------------------------------------------------- colour
 
     @Test
-    fun `colours with alpha and resource references pass through untouched`() {
+    fun `colours with alpha pass through untouched`() {
         assertMatchesGolden(
-            "colour_alpha_and_reference.xml",
-            plainVector(style(color = "#80E91E63", textColor = "@color/banner_text")),
+            "colour_alpha.xml",
+            plainVector(style(color = "#80E91E63", textColor = "#B3FFFFFF")),
         )
     }
 
@@ -273,8 +275,8 @@ abstract class BannerGeneratorTestCases {
     @Test
     fun `the banner normalises against a non-default viewport`() {
         val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground_24.xml"))
-        val files = generate(request(resources, style(), icon = DRAWABLE_ICON)).success().files
-        assertMatchesGolden("viewport_24.xml", files.getValue("drawable/ic_launcher.xml"))
+        val result = generate(request(resources, style(), icon = DRAWABLE_ICON)).success()
+        assertMatchesGolden("viewport_24.xml", result.xml("drawable/ic_launcher.xml"))
     }
 
     // -------------------------------------------------------- adaptive icons
@@ -286,7 +288,7 @@ abstract class BannerGeneratorTestCases {
             setOf(ADAPTIVE_PATH, FOREGROUND_PATH, MONO_PATH),
             result.files.keys,
         )
-        assertMatchesGolden("adaptive_redirected.xml", result.files.getValue(ADAPTIVE_PATH))
+        assertMatchesGolden("adaptive_redirected.xml", result.xml(ADAPTIVE_PATH))
     }
 
     @Test
@@ -295,13 +297,13 @@ abstract class BannerGeneratorTestCases {
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_separate_mono.xml"))
             .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
             .xml("drawable/ic_launcher_monochrome.xml", input("foreground_24.xml"))
-        val files = generate(request(resources, style())).success().files
+        val result = generate(request(resources, style())).success()
         // The adaptive icon itself needs no change, so it is not re-emitted and the original stands.
         assertEquals(
             setOf(FOREGROUND_PATH, "drawable/ic_launcher_monochrome.xml"),
-            files.keys,
+            result.files.keys,
         )
-        assertMatchesGolden("separate_monochrome.xml", files.getValue("drawable/ic_launcher_monochrome.xml"))
+        assertMatchesGolden("separate_monochrome.xml", result.xml("drawable/ic_launcher_monochrome.xml"))
     }
 
     @Test
@@ -319,7 +321,7 @@ abstract class BannerGeneratorTestCases {
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_extras.xml"))
             .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
-        val output = generate(request(resources, style())).success().files.getValue(ADAPTIVE_PATH)
+        val output = generate(request(resources, style())).success().xml(ADAPTIVE_PATH)
         assertMatchesGolden("adaptive_extras_preserved.xml", output)
         assertTrue("future-layer" in output, output)
         assertTrue("tools:ignore" in output, output)
@@ -352,7 +354,8 @@ abstract class BannerGeneratorTestCases {
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
             .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
             .xml("drawable-v24/ic_launcher_foreground.xml", input("foreground_groups.xml"))
-            .raster("drawable-hdpi/ic_launcher_foreground.png")
+            // A bitmap variant of the same drawable, which gets the same two passes as the vectors.
+            .raster("drawable-hdpi/ic_launcher_foreground.png", solidPng(48))
         val files = generate(request(resources, style())).success().files
         assertEquals(
             setOf(
@@ -361,21 +364,11 @@ abstract class BannerGeneratorTestCases {
                 "drawable/ic_launcher_foreground_iconbanner_mono.xml",
                 "drawable-v24/ic_launcher_foreground.xml",
                 "drawable-v24/ic_launcher_foreground_iconbanner_mono.xml",
+                "drawable-hdpi/ic_launcher_foreground.png",
+                "drawable-hdpi/ic_launcher_foreground_iconbanner_mono.png",
             ),
             files.keys,
         )
-    }
-
-    @Test
-    fun `raster variants are skipped without comment`() {
-        val resources = FakeResources()
-            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
-            .raster("mipmap-hdpi/ic_launcher.webp")
-            .raster("mipmap-xxhdpi/ic_launcher.webp")
-            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
-        val result = generate(request(resources, style())).success()
-        assertTrue(result.files.keys.none { it.endsWith(".webp") }, result.files.keys.toString())
-        assertTrue(result.info.none { "webp" in it }, result.info.toString())
     }
 
     @Test
@@ -417,10 +410,19 @@ abstract class BannerGeneratorTestCases {
 
     @Test
     fun `generation is byte-deterministic across runs`() {
-        // Attribute order and whitespace are the usual places determinism is lost.
-        val first = adaptiveIcon(style()).files
-        val second = adaptiveIcon(style()).files
-        assertEquals(first, second)
+        // Attribute order and whitespace are where XML determinism goes; an encoder's timestamp is
+        // where a bitmap's does, so the run covers both kinds of output.
+        fun run() = generate(
+            request(
+                FakeResources()
+                    .xml(ADAPTIVE_PATH, input("adaptive_shared_mono.xml"))
+                    .xml(FOREGROUND_PATH, input("foreground.xml"))
+                    .raster("mipmap-hdpi/ic_launcher.webp", solidPng(72)),
+                style(),
+            )
+        ).success()
+
+        assertSameFiles(run(), run())
     }
 
     // ---------------------------------------------------------------- helpers

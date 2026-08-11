@@ -34,7 +34,9 @@ evaluated provider, so a git SHA or a CI build number can appear on the icon.
 The laziness guarantee is narrower than it first looks, and the implementation confirmed it: a
 provider is definitely not read on a build that does not request the icon. On a build that does,
 the configuration cache finalizes task input providers when it stores its entry, so the provider may
-still be resolved during configuration. That is the guarantee the plugin can actually make.
+still be resolved during configuration. That is the guarantee the plugin can actually make. The same
+cause narrows a second promise the same way — see "The honest narrowing" under Rasterized icons, where
+the configuration cache resolves the bitmap reader for a build that never needed it.
 
 Themed (monochrome) icons are handled properly rather than ignored: monochrome only keeps alpha, so
 a colored ribbon layered on top would render as a solid untextured wedge with unreadable text. The
@@ -140,21 +142,27 @@ plugin instead clips the icon content and punches the text out of the ribbon as 
 39. As an Android developer building offline for the first time, I want a failure that names the URL
     it needed, so that I know exactly what to warm the cache with.
 40. As an Android developer, I want the build to fail loudly if I asked for a banner and there was
-    no vector to put it on, so that I never get a silently unmarked build.
-41. As an Android developer whose icon also has legacy raster mipmaps, I want the build to succeed
-    quietly, so that a cosmetic limitation on very old API levels does not block me.
+    nothing in my icon to put it on, so that I never get a silently unmarked build.
+41. As an Android developer whose icon also has legacy raster mipmaps, I want those bannered as well,
+    so that a device below API 26 shows a marked icon rather than the production one.
 42. As an Android developer, I want the plugin to do nothing in library modules, so that applying it
     from a convention plugin across all modules is safe.
+43. As an Android developer whose launcher icon is only bitmaps, I want it bannered too, so that the
+    plugin is not gated on migrating to adaptive icons.
+44. As an Android developer, I want my round bitmap icon's band clipped to the icon's own shape, so
+    that a round icon does not grow a triangle where the corner used to be.
+45. As an Android developer with a bitmap the plugin cannot read, I want a warning naming the file
+    rather than a failed build, so that one odd density does not stop me building.
 
 ### Adoption
 
-43. As an Android developer, I want to apply the plugin by id from a normal repository, so that I do
+46. As an Android developer, I want to apply the plugin by id from a normal repository, so that I do
     not have to vendor it.
-44. As a contributor to the plugin, I want a sample app in the repo, so that I can see the result on
+47. As a contributor to the plugin, I want a sample app in the repo, so that I can see the result on
     a real launcher before publishing.
-45. As a contributor to the plugin, I want golden-file tests for the generated XML, so that a
+48. As a contributor to the plugin, I want golden-file tests for the generated XML, so that a
     geometry regression is caught without me installing an APK.
-46. As a contributor to the plugin, I want the tests to run without network, so that CI is not
+49. As a contributor to the plugin, I want the tests to run without network, so that CI is not
     coupled to a third-party font service.
 
 ## Implementation Decisions
@@ -209,6 +217,228 @@ template does exactly this — one name cannot hold two different outputs. The m
 therefore written under a new name and the adaptive-icon XML is rewritten to redirect its
 `<monochrome>` reference.
 
+### Rasterized icons
+
+A bitmap backing the launcher icon is decoded, the banner is composited into its pixels with Java2D,
+and the result is written back as **PNG** whatever went in, because the JDK has no WebP *writer*. Same
+resource name, same qualifier folder, one different extension.
+
+Pixels rather than a `<layer-list>` stacking a banner drawable over the bitmap, and that alternative
+was considered seriously. It fails on the same ground as "rewrite, do not overlay" above:
+**monochrome**. A layer-list cannot clip a bitmap to a path, so a themed icon's glyph holes fill
+straight back in from the bitmap beneath — the exact failure clip-and-punch exists to prevent. It
+would also have needed a verbatim renamed copy of every density file, since a layer-list cannot
+reference the name it overrides, so both copies would sit in the APK.
+
+#### Delivery: one extension apart, settled by spike
+
+Against AGP 9.3.1 and Gradle 9.5, in the same spirit as the same-name spike below. A generated
+`mipmap-hdpi/ic_launcher.png` cleanly overrides `main`'s `mipmap-hdpi/ic_launcher.webp`. The merger's
+own state file shows why: the merge key is name, type and qualifiers, the extension is not part of it,
+and the data sets are ordered `main`, build type, then `generated`. The original webp is not merely
+outranked — it is never compiled.
+
+Three further findings, two of which shaped the code:
+
+- **Mixed extensions across the densities of one resource are legal.** Generating only `hdpi` as PNG
+  while `mdpi` stays webp packages both and resolves correctly, so a partially rewritten icon is not
+  a case to design around.
+- **Nothing warns if the plugin writes the wrong qualifier folder.** No merger message, no lint
+  finding: the original is silently packaged instead and the banner simply never appears. That is why
+  the output reuses the source's own qualifier string verbatim, and why a test pins it.
+- Release builds re-encode the result — `crunchPngs` palette-quantizes it losslessly and
+  `optimizeReleaseResources` renames it — so no test may assert that the packaged bytes equal the
+  generated bytes. It stays a PNG; nothing is converted back to webp on the way.
+
+#### The silhouette clip, the one genuinely new piece of geometry
+
+A **standalone legacy raster icon** — the whole 48dp icon, which a launcher draws with no mask — is
+painted with `AlphaComposite.SrcAtop`, so the band lands only where the icon already has alpha. That
+is the raster analogue of the mask an adaptive icon gets for free; without it the band runs out to the
+canvas corner and gives a round icon a floating triangle.
+
+A **bitmap that an adaptive icon's layer points at** is painted plain source-over instead. The system
+masks that layer itself, and an adaptive foreground is typically a logo floating on a large
+*transparent* surround, so `SrcAtop` there would erase almost the whole band and leave the ribbon
+showing only over the logo. The distinction cannot be inferred from the image: the caller states it,
+and it is asserted in both directions.
+
+Monochrome in pixels is `Clear` over the ribbon quad, then `Area(quad) − Area(glyphs)` filled white at
+`monochromeAlpha` — the same clip-and-punch, with a subtraction standing in for a fill rule that has
+no raster counterpart. That is a reproduction and not an approximation, which is worth stating because
+"even-odd has no raster counterpart" reads like a compromise was accepted. `Area` resolves the glyph
+outline under the outline's *own* non-zero winding before the subtraction, so what is taken out of the
+quad is exactly the region the vector's `evenOdd` fill leaves as holes — counters included: the
+even-odd rule's third crossing fills the inside of a `D`, and so does not subtracting it.
+
+The two phases run as two passes across the banners, for a
+different reason than the vector's nested groups — in a single loop the second banner's clear would
+eat the first banner's fill wherever the bands overlap. One deliberate divergence from even-odd: a
+glyph part protruding past the band is not filled white, where the fill rule would fill it. The band
+is `lineHeight` times the text's own ink height and centred on it, so that is reachable only below a
+`lineHeight` of about 1.0 — and 1.0 is the floor the bounds enforce, so no build script can reach it.
+
+#### Known follow-up: no sizing knob of its own, and the 1.5× skew
+
+Deliberately no raster-specific sizing, because the configuration has to mean the same thing whatever
+the icon is. A bitmap declares no viewport, so its pixel size is one, and everything in the geometry
+is proportional: a 48px mdpi icon and a 192px xxxhdpi one get identical-looking banners out of one
+value.
+
+The consequence has to be recorded honestly, because it is visible when the two icons sit side by
+side. A legacy raster's whole edge is visible icon, while the adaptive canvas is 108 units cropped to
+a 72-unit mask, so identical percentages read about **1.5× smaller** on the legacy icon: the cap height
+`maxTextSize = 13` asks for is 9.4dp on the adaptive icon and 6.2dp on a 48dp legacy one. The
+legibility warning inherits the same skew, since `LAUNCHER_DP_PER_EDGE = 72` is the adaptive figure
+and 1.5× optimistic for a legacy icon — so those icons under-warn against the 4dp floor.
+
+Left as it is, and the argument is precedent rather than indifference: this is exactly the treatment a
+plain non-adaptive `<vector>` icon already gets, which is also drawn unmasked at its full edge. A
+mask-aware scale for both was considered; it would move every golden file and grow every current
+user's banner by half. A known follow-up, not a bug.
+
+#### Colour values must be literals
+
+A bitmap fill needs an actual ARGB value the plugin can parse itself, so the four accepted forms are
+`#RGB`, `#ARGB`, `#RRGGBB` and `#AARRGGBB` — nothing else, on every kind of icon alike. One rule for both
+icon forms is the point: a configuration value cannot mean two things depending on which kind of icon it
+lands on.
+
+#### The WebP reader, which the consuming build resolves
+
+The JDK has none: on 17 and 21 `ImageIO.getReaderFormatNames()` offers JPEG, PNG, BMP, GIF, TIFF and
+WBMP and nothing else. Android Studio generates the legacy mipmaps as WebP, so a reader has to come
+from outside or the feature misses the case it exists for.
+
+`com.twelvemonkeys.imageio:imageio-webp:3.14.0`, pinned. Pure Java with no native libraries —
+verified rather than assumed, by looking for `.so`/`.dll`/`.dylib` payloads, `native` methods and
+`loadLibrary` calls across all 396 classes of it and its five transitives. Reader-only SPI, six jars
+totalling 580 KB with no third-party transitives of their own, Java 8 bytecode, BSD-3-Clause.
+Verified by decoding the demo app's own icons, which are VP8 lossy with alpha in a separate `ALPH`
+chunk, and a lossless VP8L file.
+
+Rejected:
+
+- `org.sejda.imageio:webp-imageio` is JNI, last published in 2020, and ships no Linux aarch64 native
+  at all — precisely the silent platform failure a Gradle plugin cannot afford.
+- `com.github.usefulness:webp-imageio` is JNI too. It does cover eleven platforms, and it is the
+  fallback if the pure-Java constraint is ever dropped, at 3.3 MB.
+- Apache Commons Imaging cannot decode WebP pixels at all: `WebPImageParser.getBufferedImage`
+  unconditionally throws.
+
+It is deliberately **not** an `implementation` dependency, which would land it on every consuming
+buildscript's classpath. It is resolved in the consuming project from a resolvable, non-consumable
+`iconBannerImageReaders` configuration whose `defaultDependencies` supplies the pinned coordinates, so
+a declared version wins over them. That configuration is created **eagerly when the plugin is
+applied**, not per variant: a build script's `dependencies { }` block runs long before AGP hands out
+variants, so creating it per variant makes the override fail with "Configuration with name … not
+found".
+
+*When* it is resolved matters as much as where from, and the first implementation had it wrong: it
+registered the extra readers before **every** bitmap decode. A project whose legacy mipmaps are plain
+PNG then paid a dependency resolution for a WebP reader it has no use for, and *failed* wherever that
+resolution could not reach a repository — a repository it never needed. The order is now the JDK's own
+readers first and the configuration only once `ImageIO` has come back null. The cost is decoding one
+192px icon twice on a build that does need the reader, which is nothing beside a resolution; the gain
+is that a PNG-only or vector-only icon graph never asks at all, and the seam that can throw is only
+ever reached for a file the JDK genuinely could not read.
+
+#### Registration, and the trap behind it
+
+`ImageIO`'s registry is built lazily, once, and cached per thread group. Established by experiment:
+set the thread context class loader and *then* touch `ImageIO`, and the reader is visible; touch
+`ImageIO` first and the reader is missing **permanently** while `ImageIO.read` silently returns null;
+`scanForPlugins()` after setting the loader repairs it in every ordering. Inside a Gradle daemon there
+is no telling what touched `ImageIO` first, so the loader is set, `scanForPlugins()` is called
+unconditionally, and the previous loader is restored in a `finally`. The registered reader keeps
+working after the restore, and a test pins that.
+
+The loader is cached per jar set for the daemon's lifetime — deliberate, and the same lifetime an
+ordinary dependency's loader would have — but the scan repeats on every call, because the registry is
+per thread group and a cached "already registered" would silently mean no reader in a later build.
+Registration is synchronized: two variants' generate tasks can run in parallel and `IIORegistry` is
+not built for concurrent registration. The loader's parent is the platform class loader, so a stray
+copy of the reader on some buildscript's classpath cannot win over the pinned one.
+
+A Gradle `WorkerExecutor` with `classLoaderIsolation` was considered and rejected. The decode sits
+deep inside the pure generator's call graph, so a worker would mean serialising the entire request
+across a boundary for isolation that does not matter here, and it would move the task's logging and
+failure reporting out of the task.
+
+#### The task's two properties, which each look wrong alone
+
+The reader classpath is `@Internal` and the pinned coordinates are an `@Input`. Neither makes sense on
+its own: an `@InputFiles` classpath would resolve the configuration on every run of the task,
+including for a project that decodes nothing, and an untracked classpath alone would let a change of
+reader version go unfingerprinted. Also worth recording, because it reads like an oversight:
+`defaultDependencies` does not run on `getAllDependencies()` in Gradle 9, so the input mirrors that
+block's own rule — declared coordinates, else the pinned constant — rather than forcing resolution to
+find out.
+
+#### The honest narrowing: the configuration cache resolves it anyway
+
+The intended guarantee was that a project whose icons are all vectors never resolves the reader and
+never touches the network. **The configuration cache does not allow it.** It serialises a task's file
+collections eagerly regardless of `@Internal`, so with a strict `setFrom(configuration)` a vector-only
+build *fails at store time* — "error writing value of type 'DefaultConfigurableFileCollection' > Could
+not resolve all files for configuration ':iconBannerImageReaders'" — in any project that declares only
+`google()`. That would have been a hard regression for builds that never asked for a bitmap banner.
+
+So the classpath is a **lenient** artifact view, and the actionable failure is raised when the
+resolved set comes back **empty**, which is only ever checked once a bitmap the JDK could not decode is
+in hand. What the plugin can therefore actually promise: without the configuration cache, resolution
+genuinely waits for that first undecodable bitmap, and an icon graph of vectors or of PNGs never
+resolves at all; with the cache on, the graph resolves once per stored entry, so about 580 KB is
+fetched once per machine even for a vector-only project.
+
+This is the same shape, and the same underlying cause, as the narrowing recorded in Solution about
+lazily evaluated `text` providers — the configuration cache resolves what it has to store, so "at
+execution time" becomes "during configuration, on the build that stores the entry". A reader who hits
+one of these should be shown the other.
+
+Leniency hides why resolution failed, so the failure message points at
+`gradle dependencies --configuration iconBannerImageReaders`. It also **names the file** that could not
+be decoded, and names both halves of the cause, because since the JDK's readers go first this failure
+is only ever reached on a file the JDK genuinely failed on: either no reader could be fetched, or the
+file itself is not the image it claims to be. The message says so — "if it reports nothing wrong,
+suspect the file itself: a truncated or corrupt image fails here just the same." One hole remains and
+is accepted: a *partial* resolution is not an empty one, so it surfaces as a class-loading error rather
+than the tidy message.
+
+#### Known follow-up: an unresolvable reader throws where an undecodable file only warns
+
+The two failure policies disagree, and the disagreement is deliberate. An undecodable bitmap is a
+warning and a skipped file; an unresolvable reader is a build failure. So a project that has one
+genuinely corrupt bitmap **and** no repository serving the reader hard-fails, even though every other
+density bannered fine — which is not what "skipped with a warning" promises.
+
+Kept, on two grounds. Failing loudly when a dependency cannot be fetched is the defensible half: the
+plugin cannot tell an offline build from a broken file, and silently shipping an unmarked density
+because a repository was missing is the failure this plugin exists to prevent. And the case is far
+narrower than it was before the readers moved behind the JDK's own — it needs a bitmap the JDK cannot
+read *and* a resolution that comes back empty — while the message names the file and points at both
+causes, so nobody is left guessing.
+
+The alternative is a design change nobody has argued for yet: let `ensureReadersAvailable` *report*
+rather than throw, so the Gradle layer's inability to fetch a reader becomes one more per-file skip
+reason and the "every file skipped" rule decides whether the build fails. That is the right shape if
+this ever bites someone. It also loses the actionable message on a build that is merely offline, which
+is why it is not the default.
+
+The road not taken, worth recording in case the priority ever flips: if "never touches the network"
+matters more than using Gradle's dependency management, the font route works — fetch the jars over
+HTTP into a shared cache under the Gradle user home at execution time — at the cost of hand-rolled
+URLs and checksums.
+
+#### Verified on the demo app
+
+`:app:generateStagingDebugIconBanner` writes ten bannered PNGs —
+`mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png` and the same five for `ic_launcher_round` —
+each matching its source webp's dimensions (48, 72, 96, 144, 192), alongside the vector outputs.
+`assembleStagingDebug` packages only the bannered PNGs, byte-identical to the generated files, and no
+webp survives. `assembleProdDebug` still ships the original webp untouched. The round icon's band is
+visibly clipped to its silhouette.
+
 ### Icon discovery: zero configuration
 
 There is no DSL property naming the icon. The plugin reads `android:icon` and `android:roundIcon`
@@ -222,8 +452,9 @@ Every qualified copy of a resolved drawable is rewritten and re-emitted under it
 qualifier, so an icon that varies by density or API level stays consistent.
 
 If the resolved icon is a plain `<vector>` rather than an `<adaptive-icon>`, it is bannered directly
-— the same rewrite without the layer traversal and without a monochrome variant. Only an icon with
-no vector anywhere in its graph is a failure.
+— the same rewrite without the layer traversal and without a monochrome variant. A bitmap is bannered
+in its pixels, whether it stands alone or backs an adaptive layer; see Rasterized icons. Only an icon
+with nothing bannerable anywhere in its graph is a failure.
 
 Standalone banners not attached to a launcher icon are out of scope.
 
@@ -645,11 +876,28 @@ a build that never touches `position` sees none of this.
 
 Deliberately quiet, because this is a debug convenience rather than a correctness feature:
 
-- No vector to banner at all, on a variant that asked for one — **fail**, naming the resource and
-  the reason. A silently unmarked build is the failure mode the whole plugin exists to prevent.
-- Legacy raster mipmaps that cannot be rewritten — **skipped silently**, no warning. Rasterization
-  is a shelved feature, not a per-build problem to nag about.
+- Nothing to banner at all — no vector and no usable bitmap — on a variant that asked for one:
+  **fail**, naming the resource and the reason. A silently unmarked build is the failure mode the whole
+  plugin exists to prevent.
+- A bitmap no reader can decode, and a nine-patch — **skipped with a warning** naming the file and its
+  own reason. The old policy was to skip silently, on the grounds that rasterization was a shelved
+  feature; the shelving is gone, and so is the silence.
+
+  "Cannot decode" includes a reader that *throws* rather than declining, which is why the decode catches
+  every `Exception` and not only `IOException`. The breadth is deliberate: what a reader throws on
+  malformed input is its own choice — a frame parser fed a truncated file throws whatever its arithmetic
+  produced — and the reader in question may have been resolved from the consuming project's own
+  configuration, so it is code this plugin neither ships nor controls. One corrupt icon file must cost
+  one warning and not the build. `Error` still propagates: an `OutOfMemoryError` is not a verdict on the
+  file. The one place where a decoding problem does still fail the build is recorded under Rasterized
+  icons — "an unresolvable reader throws where an undecodable file only warns".
+- A resource that has files but produced no output at all — **fail**, quoting each file's own reason.
+  `GenerationResult.Failure` carries no warnings, so a generic sentence would leave the user with
+  nothing to act on. A resource with no files at all fails as it always did.
 - No monochrome layer present — skipped silently.
+
+The rule underneath all of them is unchanged and worth restating: a variant that asked for a marking
+must never silently get none.
 
 ### Correctness details
 
@@ -666,14 +914,26 @@ Small decisions, recorded because each one is a plausible way to ship something 
   of missing-glyph boxes on the icon is worse than a build error, and it follows the rule already
   established: fail when the marking would be wrong rather than ship it wrong.
 - **Nested components are skipped.** The androidTest APK gets no banner.
-- **Color values pass through to the fill attribute** after a light format check, so `@color/…`
-  references work alongside hex literals. Only malformed literals are rejected.
+- **Colour values must be hex literals.** The four accepted forms are `#RGB`, `#ARGB`, `#RRGGBB` and
+  `#AARRGGBB`, expanded the way **aapt2** expands them — each nibble doubled, so `#ABC` is `#FFAABBCC`.
+  That rule matters because for a vector the very same string is handed to the resource compiler, and the
+  two icon forms have to agree on what a colour means. Note that `android.graphics.Color.parseColor`
+  rejects the short forms outright, so it is not the rule to copy here.
 
-  Superseded during the pre-release review: theme attributes (`?attr/…`) were originally allowed to
-  pass through too, on the reasoning that Android accepts them in a `fillColor`. It does — but a
-  launcher inflates the icon from the APK's resources with no theme attached, so the attribute has
-  nothing to resolve against and the likely outcome is no icon rather than a fallback colour. They are
-  now rejected with a message that says why.
+  Theme attributes (`?attr/…`) were originally allowed to pass through, on the reasoning that Android
+  accepts them in a `fillColor`. It does — but a launcher inflates the icon from the APK's resources with
+  no theme attached, so the attribute has nothing to resolve against and the likely outcome is no icon
+  rather than a fallback colour. They are rejected with their own message, since that failure is the
+  worst of the lot: a build error is better than an icon that will not load.
+- **A `fun interface` absorbs a new parameter silently, and `ImageCodecs` is one.** When
+  `ensureReadersAvailable` gained its `resourcePath` parameter, every existing `ImageCodecs { }` lambda
+  went on compiling without a word — a lambda with no parameter list satisfies a one-parameter SAM
+  through the implicit `it`, so nothing at any call site says "update me". During that change one such
+  lambda threw `AbstractMethodError`, bound to the method signature that no longer existed; from a clean
+  build it does not reproduce, so incremental compilation is the likely culprit rather than the
+  conversion itself. Either way the call sites now spell `{ _ -> }` out, which is what makes a future
+  signature change a compile error instead of a silent adaptation. `{ -> }` — an explicit empty
+  parameter list — *is* rejected outright, so it is only the bare `{ }` that hides.
 - **Generated monochrome drawables use a reserved name suffix**, and the plugin fails rather than
   clobbering a resource that already holds that name.
 - **Non-square foreground viewports** normalize against the smaller dimension.
@@ -690,7 +950,9 @@ test bed.
 ### Delivery mechanism: same-name override
 
 Settled by a throwaway spike against this project rather than by reasoning. The generated resource
-is emitted under the **same name** as the original; the manifest is not touched.
+is emitted under the **same name** as the original; the manifest is not touched. Name, not file name —
+a bannered webp comes out as a PNG and still overrides, which a later spike confirmed under Rasterized
+icons.
 
 What the spike established:
 
@@ -765,6 +1027,53 @@ hermetic:
 Golden files are readable XML and reviewed as part of any geometry change; a diff in review is the
 signal that geometry moved.
 
+### Raster cases: pixel assertions rather than golden files
+
+The bitmap cases assert pixels — a colour at a point derived from the default style's band, or a count
+of ribbon-coloured pixels where the band is clipped to artwork — rather than comparing against a
+checked-in PNG. Two reasons, and the second is the whole point of the goldens. A golden bitmap would be
+hostage to the JDK's PNG encoder, so an upgrade of the JDK would read as a geometry regression. And a
+binary diff is unreviewable, whereas a golden file earns its keep precisely because its diff in review
+is the signal that geometry moved. The geometry is already pinned by the ribbon tests and the vector
+goldens; what is left for these is the compositing.
+
+- A standalone icon's band clipped to its own silhouette, and an adaptive foreground's band surviving
+  a transparent surround — asserted in both directions, because the caller states which it has and the
+  pixels cannot say.
+- Every band cleared before any band is filled, with two banners on one monochrome bitmap.
+- The themed bitmap's alpha matching the themed vector's fill, so one percentage cannot mean two
+  opacities.
+- The same relative placement at 48px and at 192px, which is what "no raster sizing knob" amounts to.
+- Greyscale and indexed sources decoding as ARGB, and a bitmap without an alpha channel refused.
+- A nine-patch and an undecodable bitmap skipped with a warning while a vector beside them is still
+  bannered; a resource whose every file was skipped failing and quoting each reason.
+- The same bitmap encoding to identical bytes across runs, which `@CacheableTask` depends on.
+- The extra readers asked for once and only once a bitmap the JDK could not decode turns up, named with
+  the file that failed; a bitmap the JDK reads, and a vector-only icon, never asking at all.
+- Garbage bytes, a truncated image and a claimed signature over rubbish all decoding to null rather
+  than throwing. The pinned WebP reader turned out to be careful — every truncation and every byte
+  mutation of the checked-in webp comes back as an `IIOException` — so a reader of the suite's own,
+  registered into `IIORegistry` for one test, is what pins the `RuntimeException` case and the
+  `Error`-still-propagates case.
+
+**One real WebP is checked in** — the project's own hdpi launcher icon, VP8 lossy with alpha in a
+separate `ALPH` chunk — as the decode fixture. Everything else builds its bitmaps in memory, and a
+generator fixture named `.webp` may well hold PNG bytes: what makes a file a bitmap comes from the
+lookup rather than from its name, and the extension only matters to the *output* name, which is why
+the fixtures wear one at all.
+
+**One TestKit case resolves the reader from a repository**, since the JDK cannot decode WebP at any
+seam. That is consistent with a suite whose every TestKit case already resolves AGP itself, so it does
+not change what these tests are; the pure-seam WebP case stays hermetic because the reader is a
+`testImplementation` dependency and so already on the test JVM's classpath. Its complement — a
+vector-only build whose reader coordinates point at a module that does not exist — is worth a whole
+real build of its own, because what it guards is the configuration cache's store-time resolution, and
+no unit test can see that moment.
+
+The trap in asserting a whole result at once: `GeneratedFile.Binary` is deliberately not a data class,
+so an `assertEquals` over two output maps degrades to identity comparison the moment a case emits one,
+and then keeps passing. The comparison helper spells out a byte comparison per path instead.
+
 ### Secondary seam: the Gradle build
 
 TestKit builds against a fixture project, covering only what the pure seam cannot:
@@ -778,6 +1087,12 @@ TestKit builds against a fixture project, covering only what the pure seam canno
 - A second build reports the generate task up-to-date.
 - The configuration cache entry is reused on a second build.
 - The font download task does not re-run, and no request is made, on an incremental build.
+- A PNG launcher icon is bannered under its own qualifier folder and the task is still up-to-date on a
+  second build, with the configuration cache entry reused — the untracked reader classpath is exactly
+  the sort of thing that usually breaks both.
+- A WebP launcher icon is bannered through a reader resolved at execution time, and no webp is
+  re-emitted beside the PNG.
+- A vector-only icon builds even when the reader configuration cannot resolve anything at all.
 
 Kept deliberately small: each case costs a real Gradle build.
 
@@ -789,9 +1104,6 @@ exercised with a local file, which is the only fake the suite needs.
 
 ## Out of Scope
 
-- **Rasterized icons.** Legacy `mipmap-*/ic_launcher.webp` and PNG icons are not bannered. Devices
-  below API 26 show the unmodified icon. Explicitly shelved, and the reason the raster skip is
-  silent rather than a warning.
 - **Standalone banners.** Banners on drawables other than the launcher icon.
 - **Manual banner placement** — arbitrary coordinates, rotation, or shapes other than the corner
   ribbon. `position` slides a banner along its own diagonal and is not a general placement knob.

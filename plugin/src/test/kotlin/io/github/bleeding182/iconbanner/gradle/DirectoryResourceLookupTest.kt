@@ -1,6 +1,7 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -61,13 +62,15 @@ class DirectoryResourceLookupTest {
     }
 
     @Test
-    fun `a non-xml file is reported with no content so callers can tell it apart from absent`() {
-        res("main", "mipmap-hdpi/ic_launcher.webp", "not xml")
+    fun `a non-xml file is reported as bytes, not as missing content`() {
+        val file = res("main", "mipmap-hdpi/ic_launcher.webp", "not xml")
 
         val found = lookup("main").find(ResourceRef("mipmap", "ic_launcher")).single()
 
         assertEquals("mipmap-hdpi/ic_launcher.webp", found.relativePath)
         assertNull(found.xml)
+        // The pixels are what a bannered bitmap is composited onto, so they have to arrive intact.
+        assertArrayEquals(file.readBytes(), found.bytes)
     }
 
     @Test

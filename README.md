@@ -32,8 +32,9 @@ Themed (monochrome) icons work too: the band is clipped out of the icon and the 
 it as a real cutout, so it stays legible under any tint the system picks. That tint is the same for
 the whole icon, so `monochromeAlpha` is what tells two banners apart there.
 
-Requires **AGP 9.3+, Gradle 9+ and JDK 17+**, and a vector launcher icon. Applying it to a library or
-dynamic-feature module does nothing, so a convention plugin can apply it everywhere.
+Requires **AGP 9.3+, Gradle 9+ and JDK 17+**. Vector and bitmap launcher icons both work — see
+[Limitations](#limitations) for what a WebP one needs. Applying it to a library or dynamic-feature
+module does nothing, so a convention plugin can apply it everywhere.
 
 <br clear="right">
 
@@ -64,7 +65,7 @@ android {
 | Property | Type | Default | Notes |
 |---|---|---|---|
 | `text` | `String`, `Provider<String>`, `null` | unset | Unset means no banner. `null` clears an inherited value. `""` gives an empty ribbon. Rendered verbatim. |
-| `color` | `String` | `#FF0000` | Hex with optional alpha, or a `@color/…` reference. Not `?attr/…` — a launcher inflates the icon without a theme. |
+| `color` | `String` | `#FF0000` | A hex literal with optional alpha: `#RGB`, `#ARGB`, `#RRGGBB`, `#AARRGGBB`. The plugin paints the value itself, so nothing it cannot parse is accepted — `?attr/…` included, since a launcher inflates the icon without a theme. |
 | `textColor` | `String` | `#FFFFFF` | Same forms. |
 | `monochromeAlpha` | `Int` | `100` | How opaque the band is in the themed icon, where the system picks the colour and `color` does not apply. Lower is a lighter shade of the same tint. `0..100`. |
 | `corner` | `BannerCorner` | `topLeft` | `topLeft`, `topRight`, `bottomLeft`, `bottomRight`. Two banners overlap unless they sit in *opposite* corners — adjacent ones cross near the middle of the icon. |
@@ -211,9 +212,19 @@ where the generate task enters the task graph it resolves during configuration.
 
 ## Limitations
 
-- **Vector icons only.** Legacy raster mipmaps are skipped, so a device below API 26 shows the
-  unmodified icon. If a variant asks for a banner and there is no vector icon at all, the build
-  fails rather than silently shipping an unmarked one.
+- **Bitmap icons come out as PNG.** Legacy raster mipmaps are bannered too, but the JDK can only write
+  PNG, so `mipmap-hdpi/ic_launcher.webp` is re-emitted as `mipmap-hdpi/ic_launcher.png` under the same
+  resource name. The original is not packaged.
+- **A WebP icon pulls in a reader.** The JDK cannot decode WebP, which is the format Android Studio
+  generates, so the plugin fetches `com.twelvemonkeys.imageio:imageio-webp` (about 580 KB, cached like
+  any other dependency) the first time the JDK itself fails to read one of your bitmaps. Such a project
+  needs a repository that serves it; `mavenCentral()` is enough. Declare that coordinate in the
+  `iconBannerImageReaders` configuration to pin a different version. The JDK's own readers go first, so
+  an icon that is all vectors or all PNG never fetches it and needs no repository for it — though the
+  configuration cache resolves the configuration once per stored entry either way.
+- A nine-patch, or a bitmap no reader can decode, is skipped with a warning. If a variant asks for a
+  banner and *nothing* in its icon could take one, the build fails rather than silently shipping an
+  unmarked icon.
 - The bannered copy overrides the foreground **by resource name**, so anything else pointing at that
   drawable — a splash screen, say — gets the banner too.
 - The build fails if the chosen font has no glyph for a character in your text.

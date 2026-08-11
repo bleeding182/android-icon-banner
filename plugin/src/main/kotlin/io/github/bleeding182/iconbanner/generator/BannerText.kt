@@ -9,13 +9,18 @@ import java.io.File
 import java.util.Locale
 
 /**
- * Text drawn into a ribbon: the finished `pathData` plus the size it ended up at.
+ * Text drawn into a ribbon: the finished `pathData`, the same glyphs as an AWT [Shape] for the raster
+ * path, plus the size it ended up at.
  *
- * [capHeight] is in the target vector's own viewport units, and is what the glyphs actually measure
- * at the size the geometry settled on rather than what was asked for — the caller has no other way
- * to notice that a long text shrank past readability.
+ * [capHeight] is in the target icon's own units, and is what the glyphs actually measure at the size
+ * the geometry settled on rather than what was asked for — the caller has no other way to notice that
+ * a long text shrank past readability.
+ *
+ * [pathData] is *not* derived from [glyphs]. Both carry the same transform, but the golden files pin
+ * every coordinate in [pathData], so routing it through a second shape would let a rounding
+ * difference rewrite all of them silently.
  */
-internal data class FittedText(val pathData: String, val capHeight: Double)
+internal data class FittedText(val pathData: String, val glyphs: Shape, val capHeight: Double)
 
 /**
  * Turns text into VectorDrawable `pathData` using the JDK's own font support.
@@ -84,7 +89,11 @@ internal class BannerText(fontFile: File) {
             rotate(Math.toRadians(ribbon.textRotationDegrees))
             translate(-bounds.centerX, -bounds.centerY)
         }
-        return FittedText(finalOutline.toPathData(transform), bounds.height)
+        return FittedText(
+            pathData = finalOutline.toPathData(transform),
+            glyphs = transform.createTransformedShape(finalOutline),
+            capHeight = bounds.height,
+        )
     }
 
     private fun outlineAt(text: String, size: Float): Shape {

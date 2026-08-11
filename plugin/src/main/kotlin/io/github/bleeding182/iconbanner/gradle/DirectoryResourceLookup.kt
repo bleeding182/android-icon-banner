@@ -2,6 +2,7 @@ package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceLookup
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import io.github.bleeding182.iconbanner.api.SourceContent
 import io.github.bleeding182.iconbanner.api.SourceResource
 import java.io.File
 
@@ -27,10 +28,10 @@ internal class DirectoryResourceLookup(private val roots: List<File>) : Resource
                         SourceResource(
                             qualifiers = folder.name,
                             fileName = file.name,
-                            xml = if (file.extension.equals("xml", ignoreCase = true)) {
-                                file.readText()
+                            content = if (file.extension.equals("xml", ignoreCase = true)) {
+                                SourceContent.Xml(file.readText())
                             } else {
-                                null
+                                SourceContent.Raster(file.readBytes())
                             },
                         ),
                     )

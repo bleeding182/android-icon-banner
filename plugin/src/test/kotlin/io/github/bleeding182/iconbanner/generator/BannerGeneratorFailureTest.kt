@@ -6,23 +6,21 @@ import java.io.File
 
 /**
  * The failure side of the policy: a variant that asked for a marking and would get none must fail
- * loudly, because a silently unmarked build is the exact thing the plugin exists to prevent. The
- * asymmetry with silently skipped rasters is deliberate and covered in [BannerGeneratorTestCases].
+ * loudly, because a silently unmarked build is the exact thing the plugin exists to prevent. One
+ * file the plugin cannot read is only a warning; [RasterBannerGeneratorTest] draws that line.
  */
 class BannerGeneratorFailureTest {
 
     @Test
-    fun `an icon with no XML at all fails and names the raster files`() {
+    fun `an icon whose only bitmap cannot be decoded fails and names it`() {
         val resources = FakeResources()
-            .raster("mipmap-hdpi/ic_launcher.webp")
-            .raster("mipmap-xxhdpi/ic_launcher.webp")
+            .raster("mipmap-hdpi/ic_launcher.webp", bytes = "not an image".toByteArray())
         val message = generate(request(resources, style())).failureMessage()
         assertMessageContains(
             message,
             "@mipmap/ic_launcher",
-            "no XML",
             "mipmap-hdpi/ic_launcher.webp",
-            "mipmap-xxhdpi/ic_launcher.webp",
+            "no image reader could decode it",
         )
     }
 

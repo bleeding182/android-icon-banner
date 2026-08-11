@@ -48,6 +48,19 @@ internal class IconBannerFixture(val dir: File) {
         File(root.toURI()).copyRecursively(dir, overwrite = true)
     }
 
+    /**
+     * Adds a legacy raster launcher icon to `main`, beside the base overlay's adaptive one — the shape
+     * every Android Studio project has.
+     *
+     * Written rather than checked in as another overlay: both raster cases want the *same* picture in
+     * two formats, and one copy of it in the repository is enough.
+     */
+    fun legacyIcon(qualifiers: String, fileName: String, bytes: ByteArray) = apply {
+        File(dir, "src/main/res/$qualifiers/$fileName")
+            .apply { parentFile.mkdirs() }
+            .writeBytes(bytes)
+    }
+
     /** Writes the build script. [androidExtras] is spliced into the `android { }` block. */
     fun buildScript(androidExtras: String) = apply {
         File(dir, "settings.gradle.kts").writeText(

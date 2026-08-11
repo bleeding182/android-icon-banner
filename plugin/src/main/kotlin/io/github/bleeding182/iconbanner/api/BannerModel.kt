@@ -11,13 +11,6 @@ package io.github.bleeding182.iconbanner.api
  * because the DSL hands it to build scripts.
  */
 
-/**
- * Shared vocabulary between the Gradle/AGP layer, the font layer and the generator.
- *
- * **Nothing here may reference Gradle or AGP types**, or the generator stops being testable
- * without a build. Everything is `internal` except [BannerCorner], which the DSL hands to build
- * scripts: a plugin's public classes are a binary-compatibility promise.
- */
 enum class BannerCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
 
 /** Identifies a Google Font face. Maps onto the `wght` and `ital` axes of the CSS API. */
@@ -33,7 +26,7 @@ internal data class BannerStyle(
     val name: String,
     /** Rendered verbatim. May be empty, which means a ribbon with no text. */
     val text: String,
-    /** Ribbon fill. A hex literal, or a `@color/...` reference passed straight through. */
+    /** Ribbon fill, always a hex literal: a bitmap fill needs a value the plugin can parse itself. */
     val color: String,
     /** Text fill, same accepted forms as [color]. */
     val textColor: String,
@@ -69,31 +62,81 @@ internal data class SourceResource(
     val qualifiers: String,
     /** The file name including extension, e.g. `ic_launcher_foreground.xml`. */
     val fileName: String,
-    /** File contents, or null when the file is not XML (a webp or png). */
-    val xml: String?,
+    val content: SourceContent,
 ) {
     /** Path relative to a resource root, e.g. `drawable-v24/ic_launcher_foreground.xml`. */
     val relativePath: String get() = "$qualifiers/$fileName"
+
+    /** The XML, or null for a bitmap. Shorthand for the callers that only ever rewrite markup. */
+    val xml: String? get() = (content as? SourceContent.Xml)?.text
+
+    /** The pixels, or null for XML. */
+    val bytes: ByteArray? get() = (content as? SourceContent.Raster)?.bytes
+
+    /** `ic_launcher.9.png`. The resource name stops at the first dot, so the marker is what is left. */
+    val isNinePatch: Boolean get() = fileName.substringBeforeLast('.').endsWith(".9")
+
+    /**
+     * Whether a banner could go on this file at all, judged on the name alone. A bitmap may still turn
+     * out to be undecodable, which only a decode can say.
+     */
+    val isBannerable: Boolean get() = !isNinePatch
+}
+
+/** What a source file holds. Two cases, because a bitmap's bytes are as much input as a vector's text. */
+internal sealed interface SourceContent {
+    data class Xml(val text: String) : SourceContent
+
+    /**
+     * Deliberately not a data class: a generated `equals` compares a [ByteArray] by identity, so two
+     * reads of the same file would come out unequal and any comparison built on it would lie.
+     */
+    class Raster(val bytes: ByteArray) : SourceContent
 }
 
 /** Read access to the app's resources, with source-set precedence already applied. */
 internal interface ResourceLookup {
     /**
-     * In no particular order; empty when absent. Includes non-XML files, so "exists but is a
-     * bitmap" is distinguishable from "does not exist".
+     * In no particular order; empty when absent. Includes bitmaps, with their bytes, so "exists but
+     * is a bitmap" is distinguishable from "does not exist".
      */
     fun find(ref: ResourceRef): List<SourceResource>
+}
+
+/**
+ * Makes image readers beyond the JDK's own available. Called once, and only once the JDK has failed to
+ * decode a bitmap — so a project whose bitmaps the JDK reads never asks at all.
+ *
+ * @param resourcePath the file that could not be decoded, for the failure message: it is the only thing
+ * that tells the user which resource is at fault.
+ */
+internal fun interface ImageCodecs {
+    fun ensureReadersAvailable(resourcePath: String)
+}
+
+/**
+ * One generated resource file. A bannered vector comes out as XML, a bannered bitmap as PNG bytes.
+ *
+ * One type rather than two maps: the generator checks that two icons resolving to the same output
+ * path agreed on its content, and that check has to span both kinds or a path could collide with
+ * itself unnoticed.
+ */
+internal sealed interface GeneratedFile {
+    data class Text(val content: String) : GeneratedFile
+
+    /** Not a data class, for the same reason as [SourceContent.Raster]. */
+    class Binary(val bytes: ByteArray) : GeneratedFile
 }
 
 /** Outcome of generating the bannered resources for one variant. */
 internal sealed interface GenerationResult {
     /**
-     * @param files resource-root-relative path to content, reusing the original qualifier folder.
+     * @param files resource-root-relative path to file, reusing the original qualifier folder.
      * @param info notes worth logging, such as which resources were displaced.
      * @param warnings not worth failing over, but they need a louder log level than [info].
      */
     data class Success(
-        val files: Map<String, String>,
+        val files: Map<String, GeneratedFile>,
         val info: List<String> = emptyList(),
         val warnings: List<String> = emptyList(),
     ) : GenerationResult
@@ -127,6 +170,16 @@ internal data class BannerRequest(
     /** What `android:roundIcon` points at, or null when absent. */
     val roundIcon: ResourceRef?,
     val resources: ResourceLookup,
+    /**
+     * A no-op by default, which is all an icon graph of pure vectors — or of bitmaps the JDK reads —
+     * ever needs. The Gradle layer supplies a real one, whose reader is not on the plugin's own
+     * classpath, so the default keeps the generator's tests free of that wiring.
+     */
+    // `_ ->` spelled out, and load-bearing: a bare `{ }` satisfies this one-parameter fun interface
+    // through the implicit `it`, so adding a parameter to ImageCodecs would go on compiling here
+    // without a word — and once did fail at run time with an AbstractMethodError. Named, a signature
+    // change is a compile error instead.
+    val codecs: ImageCodecs = ImageCodecs { _ -> },
 )
 
 /** Supplies a local TrueType file for a [FontSpec], downloading and caching as needed. */

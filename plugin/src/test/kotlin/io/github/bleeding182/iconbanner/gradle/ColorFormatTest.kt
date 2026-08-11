@@ -16,19 +16,12 @@ class ColorFormatTest {
     }
 
     @Test
-    fun `resource references pass through unchanged`() {
-        for (value in listOf("@color/dev_red", "@android:color/holo_red_dark")) {
-            assertEquals(value, check(value))
-        }
-    }
-
-    @Test
     fun `a theme attribute is refused because a launcher icon has no theme`() {
         // Android accepts ?attr/ in a fillColor; it is useless here because a launcher has no theme.
         for (value in listOf("?attr/colorPrimary", "?colorPrimary")) {
             val failure = assertThrows(IllegalArgumentException::class.java) { check(value) }
             assertEquals(true, failure.message!!.contains("without a theme"), failure.message)
-            assertEquals(true, failure.message!!.contains("@color/name"), failure.message)
+            assertEquals(true, failure.message!!.contains("#AARRGGBB"), failure.message)
             assertEquals(true, failure.message!!.contains("devDebug"), failure.message)
         }
     }
@@ -49,6 +42,6 @@ class ColorFormatTest {
         assertThrows(IllegalArgumentException::class.java) { check("red") }
         assertThrows(IllegalArgumentException::class.java) { check("#GGGGGG") }
         assertThrows(IllegalArgumentException::class.java) { check("#FF") }
-        assertThrows(IllegalArgumentException::class.java) { check("@color") }
+        assertThrows(IllegalArgumentException::class.java) { check("0xFF0000") }
     }
 }
