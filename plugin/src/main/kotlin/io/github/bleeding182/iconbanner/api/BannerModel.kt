@@ -67,7 +67,7 @@ internal data class SourceResource(
     /** Path relative to a resource root, e.g. `drawable-v24/ic_launcher_foreground.xml`. */
     val relativePath: String get() = "$qualifiers/$fileName"
 
-    /** The XML, or null for a bitmap. Shorthand for the callers that only ever rewrite markup. */
+    /** The XML, or null for a bitmap. */
     val xml: String? get() = (content as? SourceContent.Xml)?.text
 
     /** The pixels, or null for XML. */
@@ -75,12 +75,6 @@ internal data class SourceResource(
 
     /** `ic_launcher.9.png`. The resource name stops at the first dot, so the marker is what is left. */
     val isNinePatch: Boolean get() = fileName.substringBeforeLast('.').endsWith(".9")
-
-    /**
-     * Whether a banner could go on this file at all, judged on the name alone. A bitmap may still turn
-     * out to be undecodable, which only a decode can say.
-     */
-    val isBannerable: Boolean get() = !isNinePatch
 }
 
 /** What a source file holds. Two cases, because a bitmap's bytes are as much input as a vector's text. */
@@ -175,10 +169,9 @@ internal data class BannerRequest(
      * ever needs. The Gradle layer supplies a real one, whose reader is not on the plugin's own
      * classpath, so the default keeps the generator's tests free of that wiring.
      */
-    // `_ ->` spelled out, and load-bearing: a bare `{ }` satisfies this one-parameter fun interface
-    // through the implicit `it`, so adding a parameter to ImageCodecs would go on compiling here
-    // without a word — and once did fail at run time with an AbstractMethodError. Named, a signature
-    // change is a compile error instead.
+    // `_ ->` spelled out: a bare `{ }` satisfies this one-parameter fun interface through the implicit
+    // `it`, so a new parameter on ImageCodecs would keep compiling here and fail at run time with an
+    // AbstractMethodError. Named, that becomes a compile error.
     val codecs: ImageCodecs = ImageCodecs { _ -> },
 )
 

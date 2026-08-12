@@ -1,10 +1,10 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceRef
-import io.github.bleeding182.iconbanner.generator.FakeResources
+import org.gradle.api.GradleException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -26,26 +26,42 @@ class ManifestIconsTest {
             )
         }
 
+    private fun read(vararg manifests: File) = ManifestIcons.read(manifests.toList(), "devDebug")
+
     @Test
     fun `reads the declared icon and round icon`() {
         val main = manifest("main.xml", """android:icon="@mipmap/brand" android:roundIcon="@mipmap/brand_round"""")
 
-        val icons = ManifestIcons.read(listOf(main))
+        val icons = read(main)
 
         assertEquals(ResourceRef("mipmap", "brand"), icons.icon)
         assertEquals(ResourceRef("mipmap", "brand_round"), icons.roundIcon)
-        assertTrue(!icons.roundIsFallback)
+    }
+
+    /**
+     * Nothing is assumed for an attribute nobody declared. Android populates `roundIconRes` from
+     * `android:roundIcon` alone, so an undeclared `ic_launcher_round` is artwork no launcher loads —
+     * bannering it would write output nothing displays, and used to fail the build outright when its
+     * bitmaps needed an image reader that could not be resolved.
+     */
+    @Test
+    fun `an undeclared attribute names no icon`() {
+        val main = manifest("main.xml", """android:label="@string/app_name"""")
+
+        val icons = read(main)
+
+        assertNull(icons.icon)
+        assertNull(icons.roundIcon)
     }
 
     @Test
-    fun `falls back to the conventional names`() {
-        val main = manifest("main.xml", """android:label="@string/app_name"""")
+    fun `an undeclared round icon is not invented beside a declared icon`() {
+        val main = manifest("main.xml", """android:icon="@mipmap/ic_launcher"""")
 
-        val icons = ManifestIcons.read(listOf(main))
+        val icons = read(main)
 
         assertEquals(ResourceRef("mipmap", "ic_launcher"), icons.icon)
-        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), icons.roundIcon)
-        assertTrue(icons.roundIsFallback)
+        assertNull(icons.roundIcon)
     }
 
     @Test
@@ -53,7 +69,7 @@ class ManifestIconsTest {
         val flavor = manifest("flavor.xml", """android:icon="@mipmap/flavor_icon"""")
         val main = manifest("main.xml", """android:icon="@mipmap/main_icon" android:roundIcon="@mipmap/main_round"""")
 
-        val icons = ManifestIcons.read(listOf(flavor, main))
+        val icons = read(flavor, main)
 
         assertEquals(ResourceRef("mipmap", "flavor_icon"), icons.icon)
         assertEquals(ResourceRef("mipmap", "main_round"), icons.roundIcon)
@@ -64,74 +80,25 @@ class ManifestIconsTest {
         val missing = File(dir, "gone.xml")
         val main = manifest("main.xml", """android:icon="@drawable/only"""")
 
-        assertEquals(ResourceRef("drawable", "only"), ManifestIcons.read(listOf(missing, main)).icon)
-    }
-
-    // ------------------------------------------------- which round icon gets bannered
-
-    private val invented = DeclaredIcons(
-        icon = ResourceRef("mipmap", "ic_launcher"),
-        roundIcon = ResourceRef("mipmap", "ic_launcher_round"),
-        roundIsFallback = true,
-    )
-
-    @Test
-    fun `an invented round icon backed only by rasters is kept`() {
-        // An app that never migrated still ships legacy per-density ic_launcher_round, with no XML.
-        // The rasters get the banner composited in, and a launcher that asks for the round variant
-        // must not come back with an unmarked icon.
-        val resources = FakeResources()
-            .raster("mipmap-hdpi/ic_launcher_round.webp")
-            .raster("mipmap-xxhdpi/ic_launcher_round.webp")
-
-        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
+        assertEquals(ResourceRef("drawable", "only"), read(missing, main).icon)
     }
 
     @Test
-    fun `an invented round icon with an xml variant is kept`() {
-        val resources = FakeResources()
-            .raster("mipmap-hdpi/ic_launcher_round.webp")
-            .xml("mipmap-anydpi-v26/ic_launcher_round.xml", "<adaptive-icon />")
+    fun `a declaration that is not a resource reference fails rather than being ignored`() {
+        val main = manifest("main.xml", """android:icon="ic_launcher"""")
 
-        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
+        val failure = assertThrows(GradleException::class.java) { read(main) }
+
+        assertEquals(true, failure.message!!.contains("android:icon=\"ic_launcher\""), failure.message)
+        assertEquals(true, failure.message!!.contains("devDebug"), failure.message)
     }
 
     @Test
-    fun `an invented round icon that resolves to nothing is dropped`() {
-        assertNull(invented.roundIconToBanner(FakeResources()))
-    }
+    fun `a round icon declaration that is not a resource reference fails too`() {
+        val main = manifest("main.xml", """android:icon="@mipmap/ic" android:roundIcon="nonsense"""")
 
-    /**
-     * A name nobody declared must not be what fails a build. Every file backing it being unbannerable
-     * is exactly what the generator fails on, so picking it up on mere existence turned a round icon
-     * that used to be quietly ignored into a hard error.
-     */
-    @Test
-    fun `an invented round icon backed only by nine-patches is dropped`() {
-        val resources = FakeResources()
-            .raster("mipmap-hdpi/ic_launcher_round.9.png")
-            .raster("mipmap-xxhdpi/ic_launcher_round.9.png")
+        val failure = assertThrows(GradleException::class.java) { read(main) }
 
-        assertNull(invented.roundIconToBanner(resources))
-    }
-
-    @Test
-    fun `an invented round icon with one bannerable file among nine-patches is kept`() {
-        val resources = FakeResources()
-            .raster("mipmap-hdpi/ic_launcher_round.9.png")
-            .raster("mipmap-xxhdpi/ic_launcher_round.webp")
-
-        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), invented.roundIconToBanner(resources))
-    }
-
-    @Test
-    fun `a declared round icon is kept even when it resolves badly, so the build still fails`() {
-        val declared = invented.copy(roundIsFallback = false)
-
-        assertEquals(
-            ResourceRef("mipmap", "ic_launcher_round"),
-            declared.roundIconToBanner(FakeResources().raster("mipmap-hdpi/ic_launcher_round.webp")),
-        )
-        assertEquals(ResourceRef("mipmap", "ic_launcher_round"), declared.roundIconToBanner(FakeResources()))
+        assertEquals(true, failure.message!!.contains("android:roundIcon=\"nonsense\""), failure.message)
     }
 }

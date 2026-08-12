@@ -65,15 +65,13 @@ abstract class IconBannerGenerateTask : DefaultTask() {
     abstract val resourceDirectoryOrder: ListProperty<String>
 
     /**
-     * The readers for bitmap icons, `@Internal` on purpose: as an input it would be fingerprinted, and
-     * so resolved, on every run of this task — including for a project whose icons are all vectors and
-     * which decodes nothing at all. The collection stays lazy for the same reason, and resolution then
-     * waits for the first bitmap the JDK cannot read. The configuration cache is the exception, and
-     * [imageReaderFiles] records what that costs and why the view is lenient.
+     * The readers for bitmap icons, `@Internal` on purpose: as an input it would be fingerprinted, and so
+     * resolved, on every run — including for a project whose icons are all vectors. The collection stays
+     * lazy for the same reason, so resolution waits for the first bitmap the JDK cannot read. The
+     * configuration cache is the exception; [imageReaderFiles] records what that costs.
      *
      * [imageReaderCoordinates] is the tracked half of the pair, so a change of reader version still
-     * refingerprints the task even though the files themselves are not watched. On its own each half
-     * looks wrong.
+     * refingerprints the task even though the files are not watched. On its own each half looks wrong.
      */
     @get:Internal
     abstract val imageReaderClasspath: ConfigurableFileCollection
@@ -96,8 +94,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         val variant = variantName.get()
         val roots = resourceDirectories.get().map { it.asFile }
         val resources = DirectoryResourceLookup(roots)
-        val declared = ManifestIcons.read(manifestFiles.get().map { it.asFile })
-        val roundIcon = declared.roundIconToBanner(resources)
+        val declared = ManifestIcons.read(manifestFiles.get().map { it.asFile }, variant)
         val fonts = fontDirectory.get()
 
         val layers = banners.get()
@@ -109,11 +106,17 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         fileSystem.delete { delete(output) }
         output.mkdirs()
 
+        // Emptied first, so a variant that loses its icon does not keep serving the last run's copy.
+        val icon = declared.icon ?: run {
+            logger.info("icon banner ($variant): no <application android:icon>, so there is nothing to banner.")
+            return
+        }
+
         val result = IconBannerComponents.generator().generate(
             BannerRequest(
                 layers = layers,
-                icon = declared.icon,
-                roundIcon = roundIcon,
+                icon = icon,
+                roundIcon = declared.roundIcon,
                 resources = resources,
                 codecs = ClasspathImageCodecs(variant, imageReaderCoordinates.get()) {
                     imageReaderClasspath.files
@@ -138,7 +141,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
                 logger.lifecycle(
                     "icon banner: variant '{}' replaces {} with a bannered copy: {}",
                     variant,
-                    declared.icon,
+                    icon,
                     layers.joinToString(", ") { "${it.style.name} = \"${it.style.text}\"" },
                 )
                 for (note in result.info) logger.info("icon banner ($variant): {}", note)

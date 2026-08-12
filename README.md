@@ -221,10 +221,20 @@ where the generate task enters the task graph it resolves during configuration.
   needs a repository that serves it; `mavenCentral()` is enough. Declare that coordinate in the
   `iconBannerImageReaders` configuration to pin a different version. The JDK's own readers go first, so
   an icon that is all vectors or all PNG never fetches it and needs no repository for it — though the
-  configuration cache resolves the configuration once per stored entry either way.
+  configuration cache resolves the configuration once per stored entry either way. Expect to need it:
+  an Android Studio project declares `android:icon="@mipmap/ic_launcher"`, and that resource includes
+  `mipmap-*/ic_launcher.webp` for pre-API-26 devices even when the adaptive icon is entirely vectors.
+- **Only the icons you declare are touched, and only in the forms you already have.** The plugin reads
+  `android:icon` and `android:roundIcon`; an attribute you do not declare names no icon, so an
+  `ic_launcher_round` no manifest points at is left alone — Android never loads that one either. No
+  density or configuration variant is ever invented: `anydpi` stays `anydpi`, and a missing `ldpi` stays
+  missing.
 - A nine-patch, or a bitmap no reader can decode, is skipped with a warning. If a variant asks for a
   banner and *nothing* in its icon could take one, the build fails rather than silently shipping an
   unmarked icon.
+- **A legacy or plain-vector icon renders about 1.5x smaller.** Sizes are percentages of the icon's own
+  edge, and a launcher draws those icons whole where it crops an adaptive icon's layers to a 72dp mask.
+  The banner is applied either way; if your icon is a small old bitmap, the banner is small with it.
 - The bannered copy overrides the foreground **by resource name**, so anything else pointing at that
   drawable — a splash screen, say — gets the banner too.
 - The build fails if the chosen font has no glyph for a character in your text.

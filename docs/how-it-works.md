@@ -6,19 +6,23 @@ plugin — see the [README](../README.md) for that. Design decisions and their r
 
 ## Overriding the icon
 
-The plugin reads `android:icon` and `android:roundIcon` from the variant's source manifests, falling
-back per attribute to the conventional `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`. It
+The plugin reads `android:icon` and `android:roundIcon` from the variant's source manifests. It
 follows an adaptive icon to its foreground vector — or banners a plain `<vector>` launcher icon
 directly, or the bitmaps behind a legacy one, whichever you have — and writes the bannered copy into
 a generated resource directory under the **same** resource name. AGP's resource merger orders
 generated resources last, so the copy wins over the one in `main`, in a flavor, or in a build type.
 
+Nothing is assumed on your behalf. An attribute you do not declare names no icon, so a project without
+`android:roundIcon` gets no round icon bannered even if `mipmap/ic_launcher_round` exists — Android
+populates `roundIconRes` from that attribute alone, so it is artwork no launcher loads. A name you *did*
+declare has to resolve to something, or the build fails. Existing icons are modified and no new ones are
+invented: every bannered file lands in the qualifier folder its source came from, so `anydpi` stays
+`anydpi` and a density you do not ship stays unshipped.
+
 Those attributes are read at AGP's own source-set precedence, so a flavor's declaration wins over one
-in `main`. A name you declared has to resolve to something or the build fails, where a fallback name
-is only used if a file for it happens to exist. Merger directives are not interpreted, so
-`tools:remove="android:roundIcon"` in a flavor does not hide a `roundIcon` declared in `main` — a
-project whose variants differ in which icons they *have* is better off declaring them per flavor than
-removing them.
+in `main`. Merger directives are not interpreted, so `tools:remove="android:roundIcon"` in a flavor does
+not hide a `roundIcon` declared in `main` — a project whose variants differ in which icons they *have* is
+better off declaring them per flavor than removing them.
 
 Your source tree is never modified. Remove the plugin, or the `text` for a variant, and the original
 icon is back — there is nothing to clean up outside `build/`.
@@ -211,6 +215,10 @@ One thing to expect rather than to debug: the sizes are percentages of the icon'
 icon's whole edge is visible where an adaptive icon's 108 units are cropped to a 72-unit mask. The same
 `maxTextSize` therefore reads about 1.5× smaller on a legacy icon — 6.2dp against 9.4dp at the default —
 which is exactly the treatment a plain non-adaptive `<vector>` icon has always had.
+
+The legibility warning does not correct for it either, and deliberately: it is measured against the
+adaptive figure throughout, so an old icon that is simply small does not produce a warning on every
+build of every project that has one. The banner goes on the icon you have.
 
 ## Versions
 

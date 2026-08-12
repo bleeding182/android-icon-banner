@@ -109,6 +109,41 @@ class RasterIconFunctionalTest {
         assertEquals(TaskOutcome.SUCCESS, build.task(":generateDevDebugIconBanner")?.outcome)
     }
 
+    /**
+     * The base fixture declares `android:icon` and no `android:roundIcon`, so `ic_launcher_round` is a
+     * name nobody asked for. It used to be picked up on existence alone, which made an undecodable
+     * bitmap behind it fail the build — over a resource Android would not have loaded either, since
+     * `roundIconRes` comes from the manifest attribute alone.
+     *
+     * A whole build rather than a unit test, because the failure it pins came from the reader
+     * resolution, which no unit test reaches.
+     */
+    @Test
+    fun `an undeclared round icon is left alone even when no reader can decode it`() {
+        fixture.legacyIcon("mipmap-hdpi", "ic_launcher_round.webp", webpIcon.readBytes())
+            .buildScript(devFlavor)
+        File(fixture.dir, "build.gradle.kts").appendText(
+            """
+
+            dependencies {
+                "$IMAGE_READER_CONFIGURATION"("io.github.bleeding182:no-such-image-reader:0")
+            }
+            """.trimIndent()
+        )
+
+        val build = fixture.runner(":generateDevDebugIconBanner", "--no-build-cache").build()
+
+        assertEquals(TaskOutcome.SUCCESS, build.task(":generateDevDebugIconBanner")?.outcome)
+        assertTrue(fixture.generatedForeground("devDebug").isFile, "The declared icon lost its banner")
+        for (extension in listOf("webp", "png")) {
+            assertFalse(
+                File(fixture.generatedResources("devDebug"), "mipmap-hdpi/ic_launcher_round.$extension")
+                    .exists(),
+                "An undeclared round icon was bannered",
+            )
+        }
+    }
+
     @Test
     fun `a webp launcher icon is bannered through the reader resolved at execution time`() {
         // The one case in the suite that needs a repository serving the WebP reader: the JDK has none,

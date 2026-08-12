@@ -1,34 +1,21 @@
 package io.github.bleeding182.iconbanner.gradle
 
-import io.github.bleeding182.iconbanner.api.ResourceLookup
 import io.github.bleeding182.iconbanner.api.ResourceRef
-import io.github.bleeding182.iconbanner.api.SourceResource
+import org.gradle.api.GradleException
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
-/** What `<application android:icon>` and `android:roundIcon` point at. */
-internal data class DeclaredIcons(val icon: ResourceRef, val roundIcon: ResourceRef?, val roundIsFallback: Boolean) {
-
-    /**
-     * The round icon worth bannering, or null.
-     *
-     * A declared one is passed through, so a broken declaration still fails loudly. The conventional
-     * `ic_launcher_round` is only picked up when it actually exists — in any form, raster included: a
-     * launcher that asks for the round variant must not come back with an unmarked icon.
-     *
-     * "Exists" means a file a banner could go on, not merely a file. A name nobody declared must not be
-     * what fails a build, and every file backing it being unbannerable is exactly what the generator
-     * fails on: a round icon that is only `ic_launcher_round.9.png` used to be ignored and would
-     * otherwise now be a hard error nobody asked for.
-     */
-    fun roundIconToBanner(resources: ResourceLookup): ResourceRef? {
-        val round = roundIcon ?: return null
-        if (!roundIsFallback) return round
-        return round.takeIf { resources.find(it).any(SourceResource::isBannerable) }
-    }
-}
+/**
+ * What `<application android:icon>` and `android:roundIcon` point at, or null for an attribute the
+ * manifests do not declare.
+ *
+ * Nothing is assumed on their behalf. An attribute nobody declared names no icon, and the plugin only
+ * ever modifies an icon the app actually has: Android populates `roundIconRes` from `android:roundIcon`
+ * alone, so a `mipmap/ic_launcher_round` no manifest points at is artwork no launcher ever loads.
+ */
+internal data class DeclaredIcons(val icon: ResourceRef?, val roundIcon: ResourceRef?)
 
 /**
  * Reads the launcher icon out of a variant's source manifests, so the plugin needs no DSL property
@@ -37,11 +24,9 @@ internal data class DeclaredIcons(val icon: ResourceRef, val roundIcon: Resource
 internal object ManifestIcons {
 
     private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
-    private const val DEFAULT_ICON = "@mipmap/ic_launcher"
-    private const val DEFAULT_ROUND_ICON = "@mipmap/ic_launcher_round"
 
     /** [manifests] ordered highest priority first, as AGP's `sources.manifests.all` provides them. */
-    fun read(manifests: List<File>): DeclaredIcons {
+    fun read(manifests: List<File>, variantName: String): DeclaredIcons {
         var icon: String? = null
         var round: String? = null
         for (manifest in manifests) {
@@ -52,11 +37,18 @@ internal object ManifestIcons {
             if (icon != null && round != null) break
         }
         return DeclaredIcons(
-            icon = ResourceRef.parse(icon ?: DEFAULT_ICON) ?: ResourceRef.parse(DEFAULT_ICON)!!,
-            roundIcon = ResourceRef.parse(round ?: DEFAULT_ROUND_ICON),
-            roundIsFallback = round == null,
+            icon = icon?.let { reference(it, "icon", variantName) },
+            roundIcon = round?.let { reference(it, "roundIcon", variantName) },
         )
     }
+
+    /** A declaration that cannot be parsed is the user's own, so it fails rather than being ignored. */
+    private fun reference(raw: String, attribute: String, variantName: String): ResourceRef =
+        ResourceRef.parse(raw)
+            ?: throw GradleException(
+                "icon banner ($variantName): <application android:$attribute=\"$raw\"> is not a " +
+                    "resource reference, so the icon to banner cannot be resolved."
+            )
 
     private fun applicationElement(manifest: File): Element? {
         val factory = DocumentBuilderFactory.newInstance().apply {

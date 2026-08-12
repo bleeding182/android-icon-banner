@@ -450,14 +450,24 @@ rewritten `anydpi-v26` XML at all, which is the visible sign of the other monoch
 ### Icon discovery: zero configuration
 
 There is no DSL property naming the icon. The plugin reads `android:icon` and `android:roundIcon`
-from the `<application>` element of the variant's source manifests, falling back to the conventional
-`@mipmap/ic_launcher` when absent. References are then resolved against the variant's static
-resource directories — at AGP's own source-set precedence, so a flavor-specific icon wins over the
-one in main — and followed: adaptive-icon to foreground, adaptive-icon to monochrome. Background is
-read but not modified.
+from the `<application>` element of the variant's source manifests. References are then resolved against
+the variant's static resource directories — at AGP's own source-set precedence, so a flavor-specific icon
+wins over the one in main — and followed: adaptive-icon to foreground, adaptive-icon to monochrome.
+Background is read but not modified.
+
+**Nothing is assumed for an attribute nobody declared.** An undeclared attribute names no icon: the
+plugin modifies the icons an app has and invents none. For `roundIcon` that follows the platform —
+Android populates `ApplicationInfo.roundIconRes` from `android:roundIcon` alone, so a
+`mipmap/ic_launcher_round` that no manifest points at is artwork no launcher ever loads, and bannering it
+would write output nothing displays. A declaration that *is* present must resolve, and one that is not a
+resource reference fails rather than being quietly ignored. A variant with no `android:icon` at all has
+nothing to banner and the task does nothing.
 
 Every qualified copy of a resolved drawable is rewritten and re-emitted under its original
-qualifier, so an icon that varies by density or API level stays consistent.
+qualifier, so an icon that varies by density or API level stays consistent — and no qualifier is ever
+added. `anydpi` stays `anydpi`, a density the project does not ship stays unshipped, and the only output
+whose name differs from its source is a WebP re-encoded as PNG (same resource, same qualifiers) and the
+reserved monochrome copy described under Rasterized icons.
 
 If the resolved icon is a plain `<vector>` rather than an `<adaptive-icon>`, it is bannered directly
 — the same rewrite without the layer traversal and without a monochrome variant. A bitmap is bannered
