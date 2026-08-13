@@ -13,8 +13,7 @@ import kotlin.test.assertTrue
  *
  * Kept apart from [BannerGeneratorTestCases] on purpose: that suite is the single-banner contract and
  * runs twice over goldens that must not move, while everything here is about what changes when a
- * second layer arrives — paint order, group nesting, and warnings that suddenly have to say which
- * banner they mean.
+ * second layer arrives — paint order, group nesting, and the corners they may end up sharing.
  */
 class MultiBannerGeneratorTest {
 
@@ -154,25 +153,14 @@ class MultiBannerGeneratorTest {
     }
 
     @Test
-    fun `two illegible banners produce two warnings, each naming its own`() {
-        // Per banner, not per build: the same text is fitted per layer and per qualifier.
+    fun `two banners of illegibly long text are drawn without complaint`() {
         val result = adaptiveIcon(
             main(text = "STAGING RC1"),
             sha(text = "BUILD 12345678"),
         )
 
-        assertEquals(2, result.warnings.size, result.warnings.toString())
-        assertTrue(result.warnings.any { it.startsWith("main: ") && "STAGING RC1" in it }, result.warnings.toString())
-        assertTrue(result.warnings.any { it.startsWith("sha: ") && "BUILD 12345678" in it }, result.warnings.toString())
-    }
-
-    @Test
-    fun `the single banner warning is not prefixed with a name`() {
-        // Nearly every build has one banner, where naming it would be noise.
-        val warning = adaptiveIcon(main(text = "STAGING RC1")).warnings.single()
-
-        assertTrue(!warning.startsWith("main"), warning)
-        assertTrue(warning.startsWith("The banner text"), warning)
+        assertEquals(emptyList(), result.warnings, result.warnings.toString())
+        assertTrue(result.files.isNotEmpty(), "neither banner was generated")
     }
 
     // ---------------------------------------------------------------- helpers

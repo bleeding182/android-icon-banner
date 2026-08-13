@@ -50,8 +50,9 @@ android {
         textColor = "#FFFFFF"
         corner = bottomRight
         // "STAGING" is seven characters, so the safe-zone chord sets the text size rather than
-        // maxTextSize: 4.3dp on a launcher, just clear of the legibility warning. lineHeight is
-        // non-default so the visual check notices if a setting stops reaching the generator.
+        // maxTextSize: 4.3dp on a launcher. The unmasked icons — legacyRaster, plainVector — render the
+        // same style ~1.5x smaller; see the 1.5x skew in the spec. lineHeight is non-default so the
+        // visual check notices if a setting stops reaching the generator.
         maxTextSize = 13
         lineHeight = 1.8
         font = "Black Ops One"

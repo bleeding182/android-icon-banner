@@ -82,9 +82,8 @@ android {
 **Keep the text short.** The band is sized from the text, but the *length* it has to fit across is
 fixed by the icon's mask, so long text is drawn smaller — and a launcher icon is small to begin
 with. About seven characters stay comfortably readable, and eleven are legible on a monitor but not
-on a phone. The build warns when the text drops below a readable size; raising `maxTextSize` will
-not help in that case, because the length, not the setting, is what ran out. Latin, left-to-right
-text only.
+on a phone. Nothing stops you going smaller — raising `maxTextSize` simply will not help, because the
+length, not the setting, is what ran out. Latin, left-to-right text only.
 
 ### Sizing the ribbon with `position`
 
@@ -99,18 +98,17 @@ It is not free. The text is fitted against the chord across the icon's safe zone
 |---|---|---|---|
 | 50 | 64 | 8.1dp | 4.9dp |
 | **65** (default) | **58** | **7.1dp** | **4.3dp** |
-| 75 | 51 | 6.2dp | 3.7dp ⚠ |
-| 85 | 42 | 4.9dp | 3.0dp ⚠ |
-| 90 | 36 | 4.1dp | 2.5dp ⚠ |
+| 75 | 51 | 6.2dp | 3.7dp |
+| 85 | 42 | 4.9dp | 3.0dp |
+| 90 | 36 | 4.1dp | 2.5dp |
 
-Lengths are on the 108-unit canvas; the dp figures are cap heights on a stock 48dp launcher slot,
-against a 4dp legibility floor.
+Lengths are on the 108-unit canvas; the dp figures are cap heights on a stock 48dp launcher slot. Below
+about 4dp the text stops being readable on a phone, which is why the longer column runs out first.
 
 So this is fine-tuning, not layout. Going out costs text size quickly and coming in buys very little,
 and how much room you have depends entirely on how short the text is: five characters reach about 90
-before they stop being readable, while anything the length of `STAGING` is near the floor at the
-default and has nowhere to go. Text that no longer fits is drawn smaller, with the usual warning —
-which names `position` when that is what ran out.
+before they stop being readable, while anything the length of `STAGING` is already marginal at the
+default and has nowhere to go. Text that no longer fits is simply drawn smaller.
 
 Below 40 the band's inner edge crosses the middle of the artwork, and the ribbon stops reading as a
 corner ribbon at all. The range stops at `20..95` because outside it nothing works at any text length.

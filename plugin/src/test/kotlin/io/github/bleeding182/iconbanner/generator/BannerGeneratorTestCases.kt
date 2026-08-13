@@ -177,49 +177,10 @@ abstract class BannerGeneratorTestCases {
     }
 
     @Test
-    fun `text squeezed past readability warns without failing`() {
-        // Eleven characters in the length of three still "fit", at 5.39 of 108 — about 3.6dp.
-        val result = generate(
-            request(
-                FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
-                style(text = "STAGING RC1"),
-                icon = DRAWABLE_ICON,
-            )
-        ).success()
-
-        val warning = result.warnings.single()
-        assertTrue("STAGING RC1" in warning, warning)
-        assertTrue("11 characters" in warning, warning)
-        // What it means on a device, and nothing in the icon's own units — those differ per density on
-        // a bitmap and would stop one complaint staying one line.
-        assertTrue("3.59dp" in warning, warning)
-        assertTrue("5.39" !in warning, warning)
-        // At the default, naming iconBanner.position would cost the middle of the icon.
-        assertTrue("shorter text" in warning, warning)
-        assertTrue("position" !in warning, warning)
-        assertTrue(result.files.isNotEmpty(), "the banner should still have been generated")
-    }
-
-    @Test
-    fun `a banner pushed out is told that position is what ran out`() {
-        // "Use shorter text" is misleading for someone who shortened it and then moved the band.
-        val result = generate(
-            request(
-                FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
-                style(text = "STAGING", positionPercent = 90.0),
-                icon = DRAWABLE_ICON,
-            )
-        ).success()
-
-        val warning = result.warnings.single()
-        assertTrue("iconBanner.position (90" in warning, warning)
-        assertTrue("default of 65" in warning, warning)
-        assertTrue("pull the position back in" in warning, warning)
-    }
-
-    @Test
-    fun `text that fits legibly does not warn`() {
-        for (text in listOf("QA", "DEV", "DEBUG", "STAGING")) {
+    fun `text too long for the ribbon is drawn smaller rather than refused`() {
+        // Eleven characters in the length of three still "fit", at 5.39 of 108 — about 3.6dp on a
+        // launcher. Illegibly small on purpose is a choice this plugin leaves to the build script.
+        for (text in listOf("QA", "DEV", "STAGING", "STAGING RC1", "BUILD 12345678")) {
             val result = generate(
                 request(
                     FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml")),
@@ -227,20 +188,10 @@ abstract class BannerGeneratorTestCases {
                     icon = DRAWABLE_ICON,
                 )
             ).success()
-            assertEquals(emptyList(), result.warnings, "\"$text\" should be legible at the default style")
+
+            assertTrue(result.files.isNotEmpty(), "\"$text\" produced no banner at all")
+            assertEquals(emptyList(), result.warnings, "\"$text\" should not warn about its size")
         }
-    }
-
-    @Test
-    fun `one illegible text warns once, not once per icon file`() {
-        // The same text is fitted per layer and per qualifier; one complaint is enough.
-        val resources = FakeResources()
-            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
-            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
-            .xml("drawable-v24/ic_launcher_foreground.xml", input("foreground_groups.xml"))
-        val result = generate(request(resources, style(text = "STAGING RC1"))).success()
-
-        assertEquals(1, result.warnings.size, result.warnings.toString())
     }
 
     @Test

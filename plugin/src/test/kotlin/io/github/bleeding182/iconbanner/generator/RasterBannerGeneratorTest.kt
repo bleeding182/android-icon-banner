@@ -60,14 +60,12 @@ class RasterBannerGeneratorTest {
 
 
     /**
-     * The warning set folds duplicates by string, which only works if the string does not carry the
-     * icon's own units. A vector's every qualifier variant declares one viewport, but five densities of
-     * a bitmap are five different pixel sizes — so a cap height or a viewport in the message made one
-     * complaint five, and a real project ten or twenty across icon, roundIcon and both banners. Even in
-     * dp the figure drifts with the pixel grid, so the painter tracks whether it has complained instead.
+     * A small bitmap is where the banner text ends up smallest — the geometry is proportional, so 48px
+     * gets the same relative fit as 192px and a legacy icon is drawn unmasked at its full edge. Every
+     * density still gets its band, and none of them says anything about it.
      */
     @Test
-    fun `one illegible text on a bitmap warns once, not once per density`() {
+    fun `long text on every density is bannered without complaint`() {
         val resources = FakeResources()
             .raster("mipmap-mdpi/ic_launcher.png", solidPng(48))
             .raster("mipmap-hdpi/ic_launcher.png", solidPng(72))
@@ -77,9 +75,8 @@ class RasterBannerGeneratorTest {
 
         val result = generate(request(resources, style(text = "STAGING RC1"))).success()
 
-        assertEquals(1, result.warnings.size, result.warnings.toString())
-        // The icon's own units are what varied; nothing in the message may quote them.
-        assertTrue("viewport" !in result.warnings.single(), result.warnings.single())
+        assertEquals(emptyList(), result.warnings, result.warnings.toString())
+        assertEquals(5, result.files.size, result.files.keys.toString())
     }
 
     @Test

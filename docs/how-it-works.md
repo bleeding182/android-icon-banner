@@ -214,11 +214,9 @@ the build fail rather than silently shipping an unmarked icon.
 One thing to expect rather than to debug: the sizes are percentages of the icon's own edge, and a legacy
 icon's whole edge is visible where an adaptive icon's 108 units are cropped to a 72-unit mask. The same
 `maxTextSize` therefore reads about 1.5× smaller on a legacy icon — 6.2dp against 9.4dp at the default —
-which is exactly the treatment a plain non-adaptive `<vector>` icon has always had.
-
-The legibility warning does not correct for it either, and deliberately: it is measured against the
-adaptive figure throughout, so an old icon that is simply small does not produce a warning on every
-build of every project that has one. The banner goes on the icon you have.
+which is exactly the treatment a plain non-adaptive `<vector>` icon has always had. Nothing warns about
+it: this is a tool for marking debug builds, and text too small to read is a choice the build script is
+allowed to make. The banner goes on the icon you have.
 
 ## Versions
 

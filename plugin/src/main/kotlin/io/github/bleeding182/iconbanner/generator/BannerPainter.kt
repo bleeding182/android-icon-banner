@@ -23,10 +23,6 @@ internal fun fail(message: String): Nothing = throw GeneratorFailure(message)
 internal class BannerPainter(
     private val style: BannerStyle,
     private val text: BannerText,
-    /** Legibility complaints, shared across the request so two banners' lines arrive together. */
-    private val warnings: MutableSet<String> = linkedSetOf(),
-    /** Whether a complaint names its banner. Only set when the request carries more than one. */
-    private val nameWarnings: Boolean = false,
 ) {
 
     /**
@@ -212,51 +208,10 @@ internal class BannerPainter(
             )
 
     /**
-     * Whether this banner has complained already. One painter is one banner and outlives every file in
-     * the request, so it is the thing that knows.
-     *
-     * Deduplicating on the message text is not enough once bitmaps are involved: the fit quantises
-     * against the pixel grid, so one text comes out 3.59dp at mdpi and 3.60dp at xxxhdpi and the two
-     * strings never match. A vector's qualifier variants all declare one viewport, so those were
-     * character-identical and this never showed.
+     * The fitted glyphs, however small the fit made them. Text too long for the ribbon is drawn smaller
+     * rather than refused: this marks debug builds, and someone who asks for a smear has asked for it.
      */
-    private var complained = false
-
-    /** The fitted glyphs, warning first if the fit forced them past readability. */
-    private fun fittedText(ribbon: Ribbon): FittedText? {
-        val fitted = text.fit(style.text, ribbon) ?: return null
-        val onScreenDp = fitted.capHeight / ribbon.s * LAUNCHER_DP_PER_EDGE
-        if (onScreenDp < MIN_LEGIBLE_CAP_HEIGHT_DP && !complained) {
-            complained = true
-            // No cap height and no viewport in the message: both are the icon's own units, which differ
-            // per density on a bitmap. The dp is the whole point. position is only named when it is what
-            // ran out — on the default it buys a few percent and costs the middle of the icon.
-            val remedy = if (style.positionPercent > Ribbon.DEFAULT_POSITION_PERCENT) {
-                String.format(
-                    Locale.ROOT,
-                    "The ribbon is shortened by the icon's mask and by iconBanner.position (%.0f, " +
-                        "against a default of %.0f), so pull the position back in, or use shorter " +
-                        "text or a narrower font.",
-                    style.positionPercent,
-                    Ribbon.DEFAULT_POSITION_PERCENT,
-                )
-            } else {
-                "The ribbon's length is fixed by the icon's mask, so use shorter text or a narrower " +
-                    "font."
-            }
-            // Two decimals: %.1f rounds 3.98 to "4.0", reading as though 4dp were under a 4dp minimum.
-            warnings += (if (nameWarnings) "${style.name}: " else "") + String.format(
-                Locale.ROOT,
-                "The banner text \"%s\" (%d characters) had to be shrunk to fit across the ribbon — " +
-                    "about %.2fdp on a launcher icon, under the %.0fdp needed to stay readable. ",
-                style.text,
-                style.text.length,
-                onScreenDp,
-                MIN_LEGIBLE_CAP_HEIGHT_DP,
-            ) + remedy
-        }
-        return fitted
-    }
+    private fun fittedText(ribbon: Ribbon): FittedText? = text.fit(style.text, ribbon)
 
     /** Measured once: the band derives from the text, and this does not vary by icon file. */
     private val textWidthPerCapHeight: Double? by lazy { text.naturalWidthPerCapHeight(style.text) }
@@ -300,14 +255,5 @@ internal class BannerPainter(
         /** One rounding rule for both icon forms, so the same percentage cannot mean two opacities. */
         fun monochromeAlphaByte(alphaPercent: Double): Int =
             Math.round(alphaPercent / 100.0 * 255).toInt()
-
-        /** On-screen dp of the shorter viewport edge: a launcher fits the 72dp mask into a 48dp slot. */
-        const val LAUNCHER_DP_PER_EDGE: Double = 72.0
-
-        /**
-         * Well under anything chosen on purpose: at the default style it clears `STAGING` (5.4dp) and
-         * catches `STAGING RC1` (3.6dp).
-         */
-        const val MIN_LEGIBLE_CAP_HEIGHT_DP: Double = 4.0
     }
 }

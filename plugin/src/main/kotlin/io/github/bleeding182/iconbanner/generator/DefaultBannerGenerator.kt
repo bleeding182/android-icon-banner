@@ -43,7 +43,7 @@ private class Session(private val request: BannerRequest) {
     private val bannered = mutableSetOf<Triple<ResourceRef, Mode, String?>>()
     private val info = mutableListOf<String>()
 
-    /** A set: the same text is fitted once per qualifier variant, and one complaint is plenty. */
+    /** Overlapping corners and skipped files. Insertion-ordered, so the log reads in icon order. */
     private val warnings = linkedSetOf<String>()
 
     /** One painter per banner, in paint order — the order [BannerRequest.layers] is already in. */
@@ -64,7 +64,7 @@ private class Session(private val request: BannerRequest) {
                         "text \"${layer.style.text}\". Choose a font that covers it, or change the text."
                 )
             }
-            BannerPainter(layer.style, font, warnings, nameWarnings = request.layers.size > 1)
+            BannerPainter(layer.style, font)
         }
     }
 

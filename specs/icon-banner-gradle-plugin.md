@@ -288,14 +288,34 @@ value.
 The consequence has to be recorded honestly, because it is visible when the two icons sit side by
 side. A legacy raster's whole edge is visible icon, while the adaptive canvas is 108 units cropped to
 a 72-unit mask, so identical percentages read about **1.5× smaller** on the legacy icon: the cap height
-`maxTextSize = 13` asks for is 9.4dp on the adaptive icon and 6.2dp on a 48dp legacy one. The
-legibility warning inherits the same skew, since `LAUNCHER_DP_PER_EDGE = 72` is the adaptive figure
-and 1.5× optimistic for a legacy icon — so those icons under-warn against the 4dp floor.
+`maxTextSize = 13` asks for is 9.4dp on the adaptive icon and 6.2dp on a 48dp legacy one.
 
-Left as it is, and the argument is precedent rather than indifference: this is exactly the treatment a
-plain non-adaptive `<vector>` icon already gets, which is also drawn unmasked at its full edge. A
-mask-aware scale for both was considered; it would move every golden file and grow every current
-user's banner by half. A known follow-up, not a bug.
+The *sizing* is left as it is, and the argument is precedent rather than indifference: this is exactly
+the treatment a plain non-adaptive `<vector>` icon already gets, which is also drawn unmasked at its
+full edge. A mask-aware scale for both was considered; it would move every golden file and grow every
+current user's banner by half. A known follow-up, not a bug.
+
+There was a **legibility warning** here, and it is gone. It measured the fitted cap height against a
+4dp floor using `LAUNCHER_DP_PER_EDGE = 72`, the adaptive figure, so it inherited the skew above and
+stayed quiet on unmasked icons at sizes that really were small — the demo's own `legacyRaster` and
+`plainVector` carried "STAGING" at 2.89dp without a word.
+
+Making it mask-aware was tried and reverted first, because every Android Studio project ships
+`mipmap-*/ic_launcher*.webp` beside its adaptive icon and those are standalone icons the plugin banners:
+the corrected figure warned on **every flavor of the demo** about artwork only a pre-API-26 device draws.
+That left a warning that was either skewed or noisy, and the attempts to tune it — deduplicating per
+painter rather than per message string, naming `position` only when `position` was what ran out — were
+all effort spent on a diagnostic nobody had asked for.
+
+So the whole thing was removed rather than fixed again. **This is a debug and tooling plugin: if someone
+wants tiny text, they get tiny text.** The plugin marks the icon it is given and does not grade the
+result. Text too long for the ribbon is still drawn smaller rather than refused, which is the behaviour
+over-long text always had; what is gone is the commentary. `MIN_LEGIBLE_CAP_HEIGHT_DP`,
+`LAUNCHER_DP_PER_EDGE`, the per-painter complained flag, the banner-name prefix on warnings and
+`FittedText.capHeight` — which existed only to feed the check — all went with it.
+
+Warnings the generator still emits are about things the user cannot see coming: banners sharing a corner,
+and files skipped for being nine-patches or undecodable.
 
 #### Colour values must be literals
 
@@ -564,7 +584,7 @@ weight axis is passed through to the request instead.
 One banner per variant was never argued for; it was simply all there was. The case that breaks it is
 two markers of *different* kinds — the environment in one corner and a git SHA in the other, stories
 1 and 22 wanted at the same time. Concatenating them into one `text` does not work: the ribbon's
-length is fixed by the mask, so `"STAGING 1a2b3"` is drawn below the legibility floor.
+length is fixed by the mask, so `"STAGING 1a2b3"` comes out too small to read.
 
 `banner("sha") { … }` declares one, inside the same `iconBanner { }` block, in all three slots. The
 container is a `NamedDomainObjectContainer<IconBannerSpec>` and `banner` is `maybeCreate` rather than
@@ -761,7 +781,7 @@ line at 0.72 of the shorter edge from the corner, and grows symmetrically about 
 against the mask, but by a different criterion than the old 0.60 — worth recording, because the
 obvious one does not survive. Pinning the corner-side edge on the safe-zone rim, which is how 0.60
 was justified, now lands the centre line at 0.67, and the safe-zone chord there is short enough that
-`"STAGING"` solves to 3.6dp and trips the legibility floor. The safe zone is therefore a *lower*
+`"STAGING"` solves to 3.6dp, which is too small to read. The safe zone is therefore a *lower*
 bound on how far in the line has to be, not the choice itself. The upper bound is the icon's middle:
 at 0.72 the band's inner edge sits `0.129 * s` from the centre and its corner-side edge `0.267 * s`,
 comfortably inside the 66dp safe zone, and `"STAGING"` solves to 6.5 units — 4.3dp. Further in keeps
@@ -772,8 +792,8 @@ tuned by eye.
 Two consequences worth recording. The circularity is gone entirely: with the centre line fixed, the
 length budget is independent of the text, so the size is one division and there is no solve to
 iterate. And there is no longer any knob that helps text that is too long — the length it competes
-for is fixed geometry — so the legibility warning stops suggesting one and says to shorten the text
-instead. `SAFE_ZONE_FRACTION` and the safe-zone chord are untouched; they were the fix for real
+for is fixed geometry, so shortening the text is the only remedy there has ever been.
+`SAFE_ZONE_FRACTION` and the safe-zone chord are untouched; they were the fix for real
 on-device clipping and the geometry still keeps the text inside the safe zone.
 
 #### Superseded again: the band was √2 too thin
@@ -891,15 +911,13 @@ Three spellings were considered and two rejected:
 **The trade is asymmetric, and the docs say so.** Going out costs text size quickly — a third of the
 ribbon's length by 85 — while coming in buys very little, because the chord is flat near the centre.
 Below about 40 the band's inner edge crosses the middle of the artwork. So this is fine-tuning, and
-how much of it is available depends entirely on the text: five characters reach about 90 before the
-4dp floor, `STAGING` is already at 4.3dp at the default and has nowhere to go. `MIN_POSITION` is 20
-on taste and to catch a scale used upside down; `MAX_POSITION` is 95 on geometry, since the budget
-reaches zero at 100.
+how much of it is available depends entirely on the text: five characters reach about 90 before
+dropping under 4dp, `STAGING` is already at 4.3dp at the default and has nowhere to go. `MIN_POSITION`
+is 20 on taste and to catch a scale used upside down; `MAX_POSITION` is 95 on geometry, since the
+budget reaches zero at 100.
 
-Two knock-on decisions. The legibility warning now names `position` as the cause, but **only when the
-banner was pushed past the default** — suggesting it to someone on 65 would send them towards a
-setting that buys a few percent and costs them the centre of their icon. And `maxTextSize` keeps its
-static `1..21` ceiling even though the limit it approximates now moves: the true bound is
+One knock-on decision: `maxTextSize` keeps its static `1..21` ceiling even though the limit it
+approximates now moves. The true bound is
 `2 * (safeRadius − d)`, which falls to 6% at position 90, so validating against it would make the
 documented default of 13 illegal past about 78 and turn one knob into a two-knob ritual. `Ribbon`
 clamps the fitted size to that bound instead — a third term beside "as asked for" and "as long as it
