@@ -432,12 +432,20 @@ URLs and checksums.
 
 #### Verified on the demo app
 
-`:app:generateStagingDebugIconBanner` writes ten bannered PNGs —
+`:app:generateAdaptiveVectorDebugIconBanner` writes ten bannered PNGs —
 `mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png` and the same five for `ic_launcher_round` —
 each matching its source webp's dimensions (48, 72, 96, 144, 192), alongside the vector outputs.
-`assembleStagingDebug` packages only the bannered PNGs, byte-identical to the generated files, and no
-webp survives. `assembleProdDebug` still ships the original webp untouched. The round icon's band is
-visibly clipped to its silhouette.
+`assembleAdaptiveVectorDebug` packages only the bannered PNGs, byte-identical to the generated files,
+and no webp survives. `assembleProdDebug` still ships the original webp untouched. The round icon's
+band is visibly clipped to its silhouette.
+
+Two flavors added later cover the rest of the path, both confirmed in the packaged APK and by eye.
+`legacyRaster` is an icon that is *only* bitmaps, and its `app_icon_round.png` is the clearest look at
+the silhouette clip; `adaptiveRaster` is the case where the pixels sit behind an adaptive layer, whose
+foreground keeps a full-width band across the transparent surround and whose monochrome PNG comes back
+with the glyphs punched out and the artwork cleared from under the band. `adaptiveRaster` emits no
+rewritten `anydpi-v26` XML at all, which is the visible sign of the other monochrome branch: a
+`<monochrome>` with a drawable of its own is bannered in place and needs no redirect.
 
 ### Icon discovery: zero configuration
 
@@ -457,6 +465,23 @@ in its pixels, whether it stands alone or backs an adaptive layer; see Rasterize
 with nothing bannerable anywhere in its graph is a failure.
 
 Standalone banners not attached to a launcher icon are out of scope.
+
+#### Known follow-up: merger directives are not interpreted
+
+Reading the source manifests rather than the merged one is what keeps discovery configuration-cache
+safe and free of a dependency on the merge task, and source-set precedence gets the same answer the
+merger would for an ordinary declaration — including `tools:replace`, which works by accident, since
+the manifest that replaces is also the higher-priority one.
+
+`tools:remove` is the case that does not survive. Found by building the demo app's `plainVector`
+flavor, which has no round icon: the flavor manifest removed `android:roundIcon`, the plugin read the
+declaration in `main` anyway, and the build failed with `@mipmap/ic_launcher_round was not found` for a
+name the app does not in fact declare. The demo now declares its icons per flavor instead of removing
+them, which is the better arrangement for a project whose flavors differ in icon anyway, and the
+limitation is documented rather than worked around. Interpreting the directives would mean either
+parsing `tools:` attributes — a partial reimplementation of the merger, since precedence, node merges
+and `tools:node` all interact — or consuming the merged manifest and accepting the task dependency.
+Neither is worth it for an attribute a project rarely removes.
 
 ### AGP integration
 
@@ -946,6 +971,36 @@ The plugin is its own Gradle build, included from the root build's plugin manage
 app applies it by id and picks up live edits. Publishing configuration is present from the start so
 the released artifact is never an afterthought. The existing app module doubles as the manual visual
 test bed.
+
+#### The demo's flavors are one per kind of icon
+
+`:app` carries a single `icon` flavor dimension with one flavor per launcher icon the plugin can be
+handed: `adaptiveVector` (adaptive, vector foreground, `<monochrome>` reusing that foreground),
+`adaptiveRaster` (adaptive, PNG foreground, `<monochrome>` with a PNG of its own), `legacyRaster`
+(WebP mipmaps under names of their own, no adaptive icon at all), `plainVector` (one unmasked
+`<vector>`, no round variant) and `prod` (`adaptiveVector`'s icons with no banner configured). One
+dimension rather than crossing icon kind with an environment: the cross is twenty variants for no
+extra coverage, and the four bannered flavors already carry identical text and style so that the icon
+is the only variable. Each has its own `applicationIdSuffix` and label, because the check this exists
+for is looking at all five on one launcher at once.
+
+Two consequences of AGP, both load-bearing:
+
+- **The icons live in the flavors, not in `main`.** Resource merging can override a file but never
+  remove one, so a flavor sharing `main`'s icon set can never be the project that has no
+  `mipmap-anydpi-v26/ic_launcher.xml` — which is exactly the case `legacyRaster` exists to cover.
+  `prod` reads `adaptiveVector`'s directory through `res.srcDir` rather than keeping a second copy of
+  fourteen files for a difference to hide in.
+- **`android:icon` is declared per flavor too**, for the reason under Icon discovery: `tools:remove`
+  is invisible to the plugin, so a `roundIcon` declared in `main` is a name every flavor has to
+  resolve. With nothing declared in `main` there are no merger directives anywhere in the demo.
+
+The raster artwork is derived, not drawn: `scripts/demo-icons.sh` renders `adaptiveRaster`'s layers
+from `adaptiveVector`'s own vector at five densities and copies the WebP mipmaps under
+`legacyRaster`'s names, so the flavors really do differ only in the kind of file. The split of formats
+is deliberate — `adaptiveRaster` ships PNG, which the JDK reads, and `legacyRaster` ships WebP, which
+needs the resolved reader, while `plainVector` has no bitmap at all and so is the flavor that
+demonstrates the reader is never fetched.
 
 ### Delivery mechanism: same-name override
 

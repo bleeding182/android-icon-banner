@@ -5,13 +5,30 @@ Throwaway tooling for looking at generated icons. Not part of the plugin, not on
 ## Regenerating the README images
 
 ```bash
-./scripts/preview.sh              # docs/preview.png            production / staging / full foreground
+./scripts/preview.sh              # docs/preview.png            unbannered / bannered / full foreground
 ./scripts/preview-monochrome.sh   # docs/preview-monochrome.webp themed icon cycling three tints
 ```
 
 Both need `python3`, `inkscape` and `imagemagick` on PATH, and both build `:app` first. They render
 whatever `app/build.gradle.kts` currently configures, so the images track the demo app's settings —
 change the corner, text or font there and rerun.
+
+Both read the `adaptiveVector` flavor, because both render VectorDrawables: it is the flavor whose
+icon is one. The other three bannered flavors come out of the plugin as pixels, so looking at them
+means opening the PNGs under `app/build/generated/res/generate<Variant>IconBanner/` — or installing
+them, which is what they are for.
+
+## Regenerating the demo app's derived icons
+
+```bash
+./scripts/demo-icons.sh           # app/src/adaptiveRaster/res and app/src/legacyRaster/res
+```
+
+The four bannered flavors are meant to differ in one thing only, the kind of icon the plugin is
+pointed at, so every flavor's artwork is derived from `adaptiveVector`'s checked-in Android Studio
+set: the raster adaptive layers are that vector rendered at five densities, and the legacy WebP
+mipmaps are copies under names of their own. Re-run it after editing those vectors; the output is
+checked in, so a build never needs it.
 
 The animation is WebP rather than GIF, and should stay that way: the icon is masked to a circle, and
 GIF carries one bit of alpha, so every antialiased pixel on that rim snaps to fully opaque or fully

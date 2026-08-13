@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      A drawable rather than a mipmap, and no round variant to declare. Leaving android:roundIcon out
+      is what sends the plugin to the conventional @mipmap/ic_launcher_round, which this flavor has no
+      file for — so it is skipped. Declaring a name that resolves to nothing would fail instead.
+    -->
+    <application android:icon="@drawable/ic_launcher" />
+
+</manifest>

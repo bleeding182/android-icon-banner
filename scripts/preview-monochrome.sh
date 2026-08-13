@@ -2,6 +2,9 @@
 # Regenerates docs/preview-monochrome.webp: the themed (monochrome) icon cycling through three
 # system tints, showing that the banner text stays a genuine cutout whatever colour it is tinted.
 #
+# Reads the adaptiveVector flavor: the vector rewrite is what produces a separate monochrome
+# drawable, where adaptiveRaster's monochrome layer is bannered in its own pixels and stays a PNG.
+#
 # Requires python3, inkscape and imagemagick. See CLAUDE.md in this directory.
 set -euo pipefail
 
@@ -10,9 +13,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 cd "$root"
-./gradlew :app:assembleStagingDebug -q
+./gradlew :app:assembleAdaptiveVectorDebug -q
 
-generated="app/build/generated/res/generateStagingDebugIconBanner/drawable"
+generated="app/build/generated/res/generateAdaptiveVectorDebugIconBanner/drawable"
 mono="$(ls "$generated"/*_iconbanner_mono.xml 2>/dev/null | head -1 || true)"
 
 if [[ -z "$mono" ]]; then

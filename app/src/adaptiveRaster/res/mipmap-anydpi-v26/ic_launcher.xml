@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  adaptiveVector's icon with every layer the plugin touches turned into pixels: the foreground is a
+  PNG, and <monochrome> has a PNG of its own instead of pointing back at the foreground. That second
+  difference matters — a monochrome layer with its own drawable is bannered in place, where a shared
+  one has to be emitted under a new name and this file rewritten to redirect at it.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

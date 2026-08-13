@@ -1,13 +1,41 @@
 # Contributing
 
 ```bash
-./gradlew -p plugin build          # plugin and its tests
-./gradlew :app:assembleStagingDebug   # demo app, bannered
-./gradlew :app:assembleProdDebug      # demo app, untouched
+./gradlew -p plugin build   # plugin and its tests
+./gradlew :app:assembleDebug   # demo app, every icon kind
 ```
 
 The plugin lives in `plugin/`, its own Gradle build, included from the root build's plugin
 management. `:app` exists only as a demo and a manual visual check.
+
+## The demo app's flavors
+
+One flavor per kind of launcher icon, on a single `icon` dimension, so every path the plugin can take
+is something you can install and look at:
+
+| flavor           | `android:icon`                                            | what it is there for                                                  |
+| ---------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| `adaptiveVector` | adaptive icon, vector foreground, `<monochrome>` reusing it | the vector rewrite, and the monochrome layer that needs a redirect     |
+| `adaptiveRaster` | adaptive icon, PNG foreground, `<monochrome>` PNG of its own | pixels behind an adaptive layer, and a monochrome bannered in place    |
+| `legacyRaster`   | `@mipmap/app_icon`, WebP only, no adaptive icon           | the silhouette clip, the resolved WebP reader, and unconventional names |
+| `plainVector`    | `@drawable/ic_launcher`, no adaptive icon, no round variant | an unmasked vector, and a round icon that resolves to nothing          |
+| `prod`           | `adaptiveVector`'s icons                                  | no banner configured: the icon is the checked-in artwork               |
+
+All four bannered flavors carry the same text and the same style, so the icon is the only variable —
+anything that differs between two of them is the icon kind's doing. Each has its own
+`applicationIdSuffix` and label, `prod` included, because comparing them means having all five
+installed at once — there is no aggregate install task, so that is five `:app:install<Flavor>Debug`
+runs. `MainActivity` is empty and exists only to give each of them a launcher entry.
+
+Two things about the layout are load-bearing. The launcher icons live in the flavors rather than in
+`main`, because resource merging can override a file but not remove one, so a flavor sharing `main`
+could never be the project that has *no* adaptive icon. And `android:icon` is declared per flavor for
+the same reason in the manifest: the plugin reads the source manifests at AGP's source-set
+precedence, and does not interpret `tools:remove`, so a `roundIcon` declared in `main` is a name every
+flavor then has to resolve.
+
+`app/src/adaptiveRaster/res` and `app/src/legacyRaster/res` are derived from `adaptiveVector`'s
+vectors by [`scripts/demo-icons.sh`](scripts/demo-icons.sh) rather than drawn by hand.
 
 **A JDK 17 has to be installed.** The plugin is compiled for 17, the floor AGP 9 sets, and pins that
 with a Java toolchain; `plugin/settings.gradle.kts` configures no toolchain resolver, so Gradle

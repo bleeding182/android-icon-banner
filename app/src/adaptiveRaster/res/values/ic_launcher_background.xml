@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A flat colour rather than adaptiveVector's patterned vector. The plugin never reads the background
+  layer, so there is nothing to demonstrate by rasterizing it too, and a flat one makes it obvious at
+  a glance which of the two adaptive flavors you are looking at.
+-->
+<resources>
+    <color name="ic_launcher_background">#3DDC84</color>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- adaptiveVector's icons and names; the flavor's only difference is that it configures no
+         banner, so what installs here is the checked-in artwork. -->
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round" />
+
+</manifest>

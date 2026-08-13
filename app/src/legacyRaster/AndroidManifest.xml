@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Nothing conventional about these names, which is the point: the plugin reads the manifest rather
+      than assuming ic_launcher. Both are declared, so a missing file here fails the build, where the
+      fallback name is only bannered if it happens to exist.
+    -->
+    <application
+        android:icon="@mipmap/app_icon"
+        android:roundIcon="@mipmap/app_icon_round" />
+
+</manifest>

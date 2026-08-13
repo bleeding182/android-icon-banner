@@ -54,13 +54,15 @@ jobs:
           echo "$jar: class-file major version(s): $majors"
           test "$majors" = "61 " || { echo "Expected class-file major 61 (JDK 17) only."; exit 1; }
 
-      # The real integration check: apply the plugin to an actual Android app and bannered variants.
+      # The real integration check: apply the plugin to an actual Android app. assembleDebug covers
+      # every flavor, which is one per kind of launcher icon — adaptive with a vector foreground,
+      # adaptive with a raster one, legacy bitmaps alone, a plain vector — plus the unbannered prod.
       # The root build pins its daemon to JDK 25 (gradle/gradle-daemon-jvm.properties), so the
       # included plugin build has to *find* a 17 toolchain; JAVA_HOME is the one set up above.
       - name: Build the demo app
         run: >
           ./gradlew -Porg.gradle.java.installations.paths="$JAVA_HOME"
-          :app:assembleStagingDebug :app:assembleProdDebug
+          :app:assembleDebug
 
       - name: Upload test reports
         if: failure()

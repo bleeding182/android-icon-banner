@@ -6,12 +6,19 @@ plugin — see the [README](../README.md) for that. Design decisions and their r
 
 ## Overriding the icon
 
-The plugin reads `android:icon` and `android:roundIcon` from the merged manifest, falling back to
-the conventional `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round` when neither is declared. It
+The plugin reads `android:icon` and `android:roundIcon` from the variant's source manifests, falling
+back per attribute to the conventional `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`. It
 follows an adaptive icon to its foreground vector — or banners a plain `<vector>` launcher icon
 directly, or the bitmaps behind a legacy one, whichever you have — and writes the bannered copy into
 a generated resource directory under the **same** resource name. AGP's resource merger orders
 generated resources last, so the copy wins over the one in `main`, in a flavor, or in a build type.
+
+Those attributes are read at AGP's own source-set precedence, so a flavor's declaration wins over one
+in `main`. A name you declared has to resolve to something or the build fails, where a fallback name
+is only used if a file for it happens to exist. Merger directives are not interpreted, so
+`tools:remove="android:roundIcon"` in a flavor does not hide a `roundIcon` declared in `main` — a
+project whose variants differ in which icons they *have* is better off declaring them per flavor than
+removing them.
 
 Your source tree is never modified. Remove the plugin, or the `text` for a variant, and the original
 icon is back — there is nothing to clean up outside `build/`.

@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      No android:icon here. Each flavor declares its own, because they do not all have the same one to
+      declare: two share the conventional names, one uses names of its own, and one has no round variant.
+      The plugin reads these attributes at AGP's source-set precedence, so a flavor's declaration wins and
+      nothing needs tools:replace.
+    -->
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="false"
-        android:theme="@style/Theme.AndroidIconBanner" />
+        android:theme="@style/Theme.AndroidIconBanner">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
 
 </manifest>
