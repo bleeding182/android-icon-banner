@@ -32,7 +32,13 @@ internal class BannerText(fontFile: File) {
      */
     private val renderContext = FontRenderContext(null, true, true)
 
-    val font: Font = Font.createFont(Font.TRUETYPE_FONT, fontFile)
+    /**
+     * Read through a stream, never as a [File]. `Font.createFont(TRUETYPE_FONT, File)` keeps the
+     * file open for as long as the `Font` lives, and the JVM here is the Gradle daemon: on Windows
+     * the next build then cannot delete the font out of the font task's output directory, and the
+     * build fails before it starts. The stream variant copies into the JDK's own temp file instead.
+     */
+    val font: Font = fontFile.inputStream().buffered().use { Font.createFont(Font.TRUETYPE_FONT, it) }
 
     /**
      * The first character [font] cannot draw. Missing-glyph boxes on a launcher icon are worse than

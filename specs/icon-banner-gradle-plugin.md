@@ -722,6 +722,12 @@ into line soup, and the coordinate convention is baseline-at-zero with y increas
 is exactly the VectorDrawable convention. No transformation or axis flip is needed, and no
 third-party font library is required.
 
+The font is handed to the JDK as a stream, never as a `File`. `Font.createFont(TRUETYPE_FONT, File)`
+holds the file open for the lifetime of the `Font`, and that lifetime is the Gradle daemon's. The
+font task rewrites its output directory on each run, so on Windows the following build died on
+`Unable to delete directory ... icon_banner/font/<variant>` with the TTF still open from a warm
+daemon — a stale daemon was the only workaround. Reported against 0.0.2.
+
 Note for the monochrome path: the outline's natural winding rule is non-zero, but the combined
 ribbon-plus-text path is emitted with even-odd so glyphs become holes. Counters inside letters
 remain correct under even-odd; fonts with self-overlapping contours are a known and accepted
