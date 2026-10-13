@@ -5,7 +5,7 @@ plugins {
 
 group = "io.github.bleeding182"
 // A release build passes -PpluginVersion=<tag without the leading v>; see .github/workflows/publish.yml.
-version = providers.gradleProperty("pluginVersion").getOrElse("0.0.1-SNAPSHOT")
+version = providers.gradleProperty("pluginVersion").getOrElse("0.0.4-SNAPSHOT")
 
 // AGP 9 supports JDK 17, so the plugin must load on a 17 daemon. Without a toolchain the bytecode
 // level is whatever JVM ran the build, and a consumer on 17 gets an UnsupportedClassVersionError.

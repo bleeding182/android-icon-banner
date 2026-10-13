@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish to GitHub Packages, e.g. 0.0.1-SNAPSHOT"
+        description: "Snapshot version to publish to GitHub Packages; must end in -SNAPSHOT"
         required: false
-        default: "0.0.1-SNAPSHOT"
+        default: "0.0.4-SNAPSHOT"
 
 # Nothing workflow-wide: `packages: write` here would hand the token to the Portal job too.
 permissions: {}
@@ -55,18 +55,27 @@ jobs:
           test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
             || { echo "No Android SDK on this runner; the functional tests would silently skip."; exit 1; }
 
-      # A tag publishes its own version; a manual run publishes whatever it was given. The input is
-      # attacker-controllable text, so it goes through the environment rather than being interpolated
-      # into the script, and is checked before it reaches a command line.
+      # A tag push publishes its own version; a manual run publishes the snapshot it was given. A
+      # manual run may not take a release number, nor a tag's (even when started on a tag ref): that
+      # version would then exist on GitHub Packages, and the real tag push would 409 there and never
+      # reach the Portal. The input is attacker-controllable text, so it goes through the environment
+      # rather than being interpolated into the script, and is checked before it reaches a command line.
       - name: Resolve the version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
             version="$INPUT_VERSION"
+            case "$version" in
+              *-SNAPSHOT) ;;
+              *)
+                echo "Refusing to publish '$version' from a manual run: only -SNAPSHOT versions." >&2
+                exit 1
+                ;;
+            esac
           fi
           case "$version" in
             "" | *[!A-Za-z0-9._-]* )
@@ -98,6 +107,7 @@ jobs:
           path: ${{ runner.temp }}/tested
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   # Snapshots and releases both land here. Reading them needs a read:packages token, which is why
   # the Plugin Portal below is the one consumers are meant to use.

@@ -71,7 +71,8 @@ consumers actually use, since it needs no credentials to read; it runs on tags o
 rejects `-SNAPSHOT` versions and a published version can never be replaced.
 
 A `workflow_dispatch` run publishes a snapshot to GitHub Packages only, for shaking things out
-without a tag.
+without a tag. It refuses any version not ending in `-SNAPSHOT`: a release number published that way
+would make the real tag push 409 on GitHub Packages and never reach the Portal.
 
 Nothing is uploaded that no test ran against. A `build` job runs the tests and the consumer check on
 one set of artifacts and hands them on; Gradle's publish tasks build what they upload, so each
