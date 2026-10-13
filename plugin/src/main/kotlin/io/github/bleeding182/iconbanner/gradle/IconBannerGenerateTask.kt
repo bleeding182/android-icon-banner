@@ -58,8 +58,11 @@ abstract class IconBannerGenerateTask : DefaultTask() {
     abstract val resourceDirectories: ListProperty<Directory>
 
     /**
-     * The file fingerprint does not capture priority, and priority decides which of two same-named
-     * files gets bannered.
+     * The order of the [resourceDirectories] roots, which their fingerprint does not capture: relative
+     * paths drop the root and are sorted, and priority decides which of two same-named files gets
+     * bannered. The order of the roots and nothing more — not which content sits in which root. Two
+     * roots swapping byte-identical files at the same relative path leave the task up-to-date, and so
+     * do two [manifestFiles], which have no order input at all. A deliberate non-case; see the spec.
      */
     @get:Input
     abstract val resourceDirectoryOrder: ListProperty<String>

@@ -384,6 +384,13 @@ Registration is synchronized: two variants' generate tasks can run in parallel a
 not built for concurrent registration. The loader's parent is the platform class loader, so a stray
 copy of the reader on some buildscript's classpath cannot win over the pinned one.
 
+The loader is never closed, also deliberately: the readers load their classes lazily, so closing it
+would break a later decode. What that leaves: reload the plugin's own class loader in the same daemon —
+a plugin version bump, say — or change the pinned reader version within one daemon, and a second loader
+is built. `IIORegistry` keys providers by class, so a second WebP reader registers beside the first and
+the older one may answer `ImageIO.read`. Accepted: both decode identically, and a daemon restart clears
+it.
+
 A Gradle `WorkerExecutor` with `classLoaderIsolation` was considered and rejected. The decode sits
 deep inside the pure generator's call graph, so a worker would mean serialising the entire request
 across a boundary for isolation that does not matter here, and it would move the task's logging and
@@ -1002,7 +1009,10 @@ Small decisions, recorded because each one is a plausible way to ship something 
   author's default — ordinary float formatting emits `23,10` into `pathData` and silently corrupts
   every generated icon. This is the most likely works-on-my-machine failure in the whole design.
 - **Generated XML is byte-deterministic** and the generate task is cacheable with relative path
-  sensitivity. Golden tests and the build cache both depend on it.
+  sensitivity. Golden tests and the build cache both depend on it. Relative paths drop the root, so
+  two source sets that swap byte-identical files at the same relative path — a manifest, or a
+  resource between res roots — leave the task up-to-date; the recorded root order does not see which
+  content sits where. A deliberate non-case: it takes a byte-exact swap between source sets.
 - **Font cache writes are atomic** — write to a temporary file, then move. Two concurrent builds
   fetching the same font into the shared cache would otherwise interleave into a truncated file.
 - **Text containing glyphs the font does not provide fails the build**, naming the characters. A row
