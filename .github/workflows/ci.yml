@@ -74,11 +74,11 @@ jobs:
             plugin/build/test-results/
           retention-days: 7
 
-  # What a consumer actually resolves. The TestKit suite puts the plugin on the fixture's own
-  # `buildscript` classpath, so `plugins { id(...) version ... }` — the marker POM, the module
-  # metadata and its org.gradle.jvm.version — is never exercised there, which is exactly the
-  # mechanism a wrong jvmTarget breaks. This job publishes to mavenLocal and resolves it by id and
-  # version on the JDK 17 floor, from a project generated here so nothing in the repo can prop it up.
+  # What a user gets: the plugin as published, resolved by id and version from a project shaped like
+  # a fresh Android Studio template, on the JDK 17 floor. The TestKit suite puts the plugin on its
+  # fixtures' buildscript classpath, so the marker POM, the module metadata and its
+  # org.gradle.jvm.version are never exercised there. .github/consumer/check.sh is the whole check,
+  # and the same one the Publish workflow runs before it uploads anything.
   consumer:
     runs-on: ubuntu-latest
     env:
@@ -95,140 +95,11 @@ jobs:
         with:
           validate-wrappers: true
 
-      - name: Require an Android SDK
-        run: |
-          test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME" \
-            || { echo "No Android SDK on this runner; the consumer build cannot run."; exit 1; }
+      - name: Publish the plugin to a local repository
+        run: >
+          ./gradlew -p plugin publishToMavenLocal
+          -PpluginVersion="$PLUGIN_VERSION" -Dmaven.repo.local="$RUNNER_TEMP/repo"
 
-      - name: Publish the plugin to mavenLocal
-        run: ./gradlew -p plugin publishToMavenLocal -PpluginVersion="$PLUGIN_VERSION"
-
-      - name: Assert the module metadata declares JDK 17
-        run: |
-          module="$HOME/.m2/repository/io/github/bleeding182/icon-banner-gradle-plugin/$PLUGIN_VERSION/icon-banner-gradle-plugin-$PLUGIN_VERSION.module"
-          test -f "$module" || { echo "No module metadata at $module"; exit 1; }
-          grep -n '"org.gradle.jvm.version"' "$module"
-          grep -q '"org.gradle.jvm.version": 17' "$module" \
-            || { echo "Module metadata must declare org.gradle.jvm.version 17, or a JDK 17 daemon cannot select a variant."; exit 1; }
-          marker="$HOME/.m2/repository/io/github/bleeding182/iconbanner/io.github.bleeding182.iconbanner.gradle.plugin/$PLUGIN_VERSION"
-          test -d "$marker" || { echo "No plugin marker at $marker; plugins { id(...) version ... } cannot resolve."; exit 1; }
-
-      - name: Generate a consumer project
-        env:
-          CONSUMER: ${{ runner.temp }}/consumer
-        run: |
-          mkdir -p "$CONSUMER/src/main/res/drawable" "$CONSUMER/src/main/res/mipmap-anydpi-v26"
-
-          cat > "$CONSUMER/settings.gradle.kts" <<'EOF'
-          pluginManagement {
-              repositories {
-                  mavenLocal() // the plugin under test, resolved by id and version like any consumer
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "consumer"
-          EOF
-
-          cat > "$CONSUMER/build.gradle.kts" <<EOF
-          plugins {
-              id("com.android.application") version "9.3.1"
-              id("io.github.bleeding182.iconbanner") version "$PLUGIN_VERSION"
-          }
-
-          android {
-              namespace = "com.example.consumer"
-              compileSdk {
-                  version = release(37)
-              }
-              defaultConfig {
-                  minSdk = 24
-              }
-              buildTypes {
-                  debug {
-                      iconBanner {
-                          text = "CI"
-                          color = "#FF00FF" // a colour nothing else in the icon uses, for the assertion
-                      }
-                  }
-              }
-          }
-          EOF
-
-          cat > "$CONSUMER/gradle.properties" <<'EOF'
-          org.gradle.jvmargs=-Xmx2048m
-          org.gradle.configuration-cache=true
-          android.useAndroidX=true
-          EOF
-
-          echo "sdk.dir=$ANDROID_HOME" > "$CONSUMER/local.properties"
-
-          cat > "$CONSUMER/src/main/AndroidManifest.xml" <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <application
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="Consumer" />
-
-          </manifest>
-          EOF
-
-          cat > "$CONSUMER/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_launcher_background" />
-              <foreground android:drawable="@drawable/ic_launcher_foreground" />
-          </adaptive-icon>
-          EOF
-
-          cat > "$CONSUMER/src/main/res/drawable/ic_launcher_background.xml" <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path
-                  android:fillColor="#FFFFFF"
-                  android:pathData="M0,0h108v108h-108z" />
-          </vector>
-          EOF
-
-          cat > "$CONSUMER/src/main/res/drawable/ic_launcher_foreground.xml" <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path
-                  android:fillColor="#3DDC84"
-                  android:pathData="M30,30h48v48h-48z" />
-          </vector>
-          EOF
-
-      # The repository's wrapper, but the generated project as the build root: it has no
-      # gradle-daemon-jvm.properties of its own, so this runs on JAVA_HOME — JDK 17, the floor.
-      - name: Build the consumer app
-        env:
-          CONSUMER: ${{ runner.temp }}/consumer
-        run: ./gradlew -p "$CONSUMER" assembleDebug
-
-      - name: Assert the banner was generated
-        env:
-          CONSUMER: ${{ runner.temp }}/consumer
-        run: |
-          generated="$CONSUMER/build/generated/res/generateDebugIconBanner/drawable/ic_launcher_foreground.xml"
-          test -f "$generated" || { echo "No generated foreground at $generated"; exit 1; }
-          grep -qi 'ff00ff' "$generated" \
-            || { echo "The generated foreground has no banner in it:"; cat "$generated"; exit 1; }
-          echo "Banner generated by the published plugin:"
-          cat "$generated"
+      # The consumer has no gradle-daemon-jvm.properties, so it builds on JAVA_HOME: 17, the floor.
+      - name: Build a consumer project against it
+        run: .github/consumer/check.sh "$PLUGIN_VERSION" "$RUNNER_TEMP/repo" "$RUNNER_TEMP/consumer"

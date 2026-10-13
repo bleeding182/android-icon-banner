@@ -8,6 +8,15 @@
 The plugin lives in `plugin/`, its own Gradle build, included from the root build's plugin
 management. `:app` exists only as a demo and a manual visual check.
 
+What a user gets — the plugin as published, applied by id and version to a template-shaped project —
+is checked by [`.github/consumer/check.sh`](.github/consumer/check.sh), the same script CI and the
+release run:
+
+```bash
+./gradlew -p plugin publishToMavenLocal -PpluginVersion=0.0.1-local -Dmaven.repo.local=/tmp/repo
+.github/consumer/check.sh 0.0.1-local /tmp/repo   # on a JDK 17 JAVA_HOME, with ANDROID_HOME set
+```
+
 ## The demo app's flavors
 
 One flavor per kind of launcher icon, on a single `icon` dimension, so every path the plugin can take
