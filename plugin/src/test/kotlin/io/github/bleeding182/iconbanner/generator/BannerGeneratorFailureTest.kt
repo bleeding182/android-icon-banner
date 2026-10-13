@@ -120,6 +120,13 @@ class BannerGeneratorFailureTest {
     }
 
     @Test
+    fun `a font that cannot draw the text fails before any icon is looked at`() {
+        // The build script's own text and font are the easier thing to act on than a missing icon.
+        val message = generate(request(FakeResources(), style(text = "DEV 中"))).failureMessage()
+        assertMessageContains(message, "中", "no glyph")
+    }
+
+    @Test
     fun `a taken reserved monochrome name fails rather than clobbering it`() {
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_shared_mono.xml"))
