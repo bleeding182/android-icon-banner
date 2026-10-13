@@ -163,7 +163,7 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         BannerBounds.check(
             maxTextSizeValue, lineHeightValue, positionValue, monochromeAlphaValue, variant, banner,
         )
-        val face = FontSpec(fontFamily.get(), fontWeight.get(), fontItalic.get())
+        val face = FontSpec(font.family.get(), font.weight.get(), font.italic.get())
         return BannerLayer(
             style = BannerStyle(
                 name = banner,

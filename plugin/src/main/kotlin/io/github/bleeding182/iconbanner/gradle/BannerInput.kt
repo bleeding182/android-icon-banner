@@ -3,6 +3,7 @@ package io.github.bleeding182.iconbanner.gradle
 import io.github.bleeding182.iconbanner.api.BannerCorner
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Nested
 
 /**
  * One banner, as a task input. A managed type: Gradle implements it.
@@ -45,12 +46,20 @@ interface BannerInput {
     @get:Input
     val z: Property<Int>
 
-    @get:Input
-    val fontFamily: Property<String>
+    /** The same object the font task is handed, so the face fetched is the face drawn with. */
+    @get:Nested
+    val font: FontInput
+}
+
+/** One face to fetch. Public for the same mechanical reason as [BannerInput]. */
+interface FontInput {
 
     @get:Input
-    val fontWeight: Property<Int>
+    val family: Property<String>
 
     @get:Input
-    val fontItalic: Property<Boolean>
+    val weight: Property<Int>
+
+    @get:Input
+    val italic: Property<Boolean>
 }

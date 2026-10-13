@@ -30,7 +30,7 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
             .extendProductFlavorWith(IconBannerDsl::class.java)
             .build()
     ) { config ->
-        IconBannerVariantExtension(mergeBanner(precedenceChain(config)))
+        IconBannerVariantExtension(mergeBanner(project.objects, precedenceChain(config)))
     }
 
     // Here rather than beside the tasks it feeds: a build script's `dependencies { }` block runs long
@@ -78,8 +78,8 @@ private fun configureVariant(
     imageReaders: Configuration,
 ) {
     // Decided at configuration time from assignment alone.
-    val resolved = variant.getExtension(IconBannerVariantExtension::class.java)?.banners.orEmpty()
-    if (resolved.isEmpty()) return
+    val bannerInputs = variant.getExtension(IconBannerVariantExtension::class.java)?.banners.orEmpty()
+    if (bannerInputs.isEmpty()) return
 
     val res = variant.sources.res
     if (res == null) {
@@ -99,37 +99,11 @@ private fun configureVariant(
     val variantNameValue = variant.name
 
     // One pair of tasks per variant, not per banner: they rewrite the same icon resources.
-    val objects = project.objects
-    val fontInputs = resolved.map { banner ->
-        objects.newInstance(FontInput::class.java).apply {
-            family.set(banner.fontFamily)
-            weight.set(banner.fontWeight)
-            italic.set(banner.fontItalic)
-        }
-    }
-    val bannerInputs = resolved.map { banner ->
-        objects.newInstance(BannerInput::class.java).apply {
-            name.set(banner.name)
-            text.set(banner.text)
-            color.set(banner.color)
-            textColor.set(banner.textColor)
-            monochromeAlpha.set(banner.monochromeAlpha)
-            corner.set(banner.corner)
-            position.set(banner.position)
-            maxTextSize.set(banner.maxTextSize)
-            lineHeight.set(banner.lineHeight)
-            z.set(banner.z)
-            fontFamily.set(banner.fontFamily)
-            fontWeight.set(banner.fontWeight)
-            fontItalic.set(banner.fontItalic)
-        }
-    }
-
     val fontTask = project.tasks.register("download${suffix}IconBannerFont", IconBannerFontTask::class.java)
     fontTask.configure {
         group = TASK_GROUP
         description = "Fetches the TrueType faces for the $variantNameValue icon banners."
-        fonts.set(fontInputs)
+        fonts.set(bannerInputs.map { it.font })
         cacheDirectory.set(fontCache)
         offline.set(isOffline)
         outputDirectory.set(

@@ -102,9 +102,9 @@ class ImageReaderClasspathTest {
                     maxTextSize.set(BannerDefaults.MAX_TEXT_SIZE)
                     lineHeight.set(BannerDefaults.LINE_HEIGHT)
                     z.set(BannerDefaults.Z)
-                    fontFamily.set(BannerDefaults.FONT)
-                    fontWeight.set(BannerDefaults.WEIGHT)
-                    fontItalic.set(BannerDefaults.ITALIC)
+                    font.family.set(BannerDefaults.FONT)
+                    font.weight.set(BannerDefaults.WEIGHT)
+                    font.italic.set(BannerDefaults.ITALIC)
                 }
             )
         )

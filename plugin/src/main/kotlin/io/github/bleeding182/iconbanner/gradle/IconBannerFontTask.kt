@@ -8,25 +8,11 @@ import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import javax.inject.Inject
-
-/** One face to fetch. Public for the same mechanical reason as [BannerInput]. */
-interface FontInput {
-
-    @get:Input
-    val family: Property<String>
-
-    @get:Input
-    val weight: Property<Int>
-
-    @get:Input
-    val italic: Property<Boolean>
-}
 
 /**
  * Produces the TrueType files the generator traces outlines from. The inputs are font identities

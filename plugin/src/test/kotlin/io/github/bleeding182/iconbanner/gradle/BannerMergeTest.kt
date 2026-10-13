@@ -25,7 +25,7 @@ class BannerMergeTest {
         project.objects.newInstance(IconBannerDsl::class.java).apply(configure)
 
     /** The banners a variant made of these blocks gets, in declaration order. */
-    private fun merge(vararg blocks: IconBannerDsl): List<ResolvedBanner> = mergeBanner(blocks.toList())
+    private fun merge(vararg blocks: IconBannerDsl): List<BannerInput> = mergeBanner(project.objects, blocks.toList())
 
     /**
      * The banner named [name], or null when nothing turned it on.
@@ -33,14 +33,14 @@ class BannerMergeTest {
      * Most cases here are about one banner, and reaching for it by name keeps them reading the way
      * they did when a merge produced at most one.
      */
-    private fun mergeOne(vararg blocks: IconBannerDsl, name: String = MAIN_BANNER): ResolvedBanner? =
-        merge(*blocks).firstOrNull { it.name == name }
+    private fun mergeOne(vararg blocks: IconBannerDsl, name: String = MAIN_BANNER): BannerInput? =
+        merge(*blocks).firstOrNull { it.name.get() == name }
 
     // ------------------------------------------------------------------- main
 
     @Test
     fun `no text anywhere means no banner`() {
-        assertEquals(emptyList<String>(), merge(dsl(), dsl(), dsl { color.set("#00FF00") }).map { it.name })
+        assertEquals(emptyList<String>(), merge(dsl(), dsl(), dsl { color.set("#00FF00") }).map { it.name.get() })
     }
 
     @Test
@@ -123,9 +123,9 @@ class BannerMergeTest {
         assertEquals(BannerDefaults.MAX_TEXT_SIZE, merged.maxTextSize.get())
         assertEquals(BannerDefaults.LINE_HEIGHT, merged.lineHeight.get())
         assertEquals(BannerDefaults.Z, merged.z.get())
-        assertEquals(BannerDefaults.FONT, merged.fontFamily.get())
-        assertEquals(BannerDefaults.WEIGHT, merged.fontWeight.get())
-        assertEquals(BannerDefaults.ITALIC, merged.fontItalic.get())
+        assertEquals(BannerDefaults.FONT, merged.font.family.get())
+        assertEquals(BannerDefaults.WEIGHT, merged.font.weight.get())
+        assertEquals(BannerDefaults.ITALIC, merged.font.italic.get())
     }
 
     @Test
@@ -153,9 +153,9 @@ class BannerMergeTest {
         assertEquals(80, merged.position.get())
         assertEquals(18, merged.maxTextSize.get())
         assertEquals(1.2, merged.lineHeight.get())
-        assertEquals("Inter", merged.fontFamily.get())
-        assertEquals(400, merged.fontWeight.get())
-        assertEquals(true, merged.fontItalic.get())
+        assertEquals("Inter", merged.font.family.get())
+        assertEquals(400, merged.font.weight.get())
+        assertEquals(true, merged.font.italic.get())
     }
 
     @Test
@@ -177,7 +177,7 @@ class BannerMergeTest {
         // Every script written before named banners existed still means what it did.
         val merged = merge(dsl(), dsl { text = "DEV" }, dsl { color.set("#00FF00") })
 
-        assertEquals(listOf(MAIN_BANNER), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER), merged.map { it.name.get() })
         assertEquals("DEV", merged.single().text.get())
         assertEquals("#00FF00", merged.single().color.get())
     }
@@ -198,7 +198,7 @@ class BannerMergeTest {
             },
         )
 
-        assertEquals(listOf(MAIN_BANNER, "sha"), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER, "sha"), merged.map { it.name.get() })
         assertEquals(listOf("DEV", "abc123"), merged.map { it.text.get() })
         assertEquals(BannerCorner.TOP_LEFT, merged[0].corner.get())
         assertEquals(BannerCorner.BOTTOM_RIGHT, merged[1].corner.get())
@@ -229,7 +229,7 @@ class BannerMergeTest {
     fun `a named banner declared only in a flavor reaches that variant`() {
         val merged = merge(dsl(), dsl { banner("sha") { text = "abc123" } }, dsl { text = "DEV" })
 
-        assertEquals(listOf(MAIN_BANNER, "sha"), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER, "sha"), merged.map { it.name.get() })
         assertEquals("abc123", merged[1].text.get())
     }
 
@@ -238,7 +238,7 @@ class BannerMergeTest {
         // A styled-but-textless banner is silently no banner, not an error.
         val merged = merge(dsl(), dsl(), dsl { banner("sha") { color.set("#00FF00") } })
 
-        assertEquals(emptyList<String>(), merged.map { it.name })
+        assertEquals(emptyList<String>(), merged.map { it.name.get() })
     }
 
     @Test
@@ -252,7 +252,7 @@ class BannerMergeTest {
             },
         )
 
-        assertEquals(listOf(MAIN_BANNER), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER), merged.map { it.name.get() })
     }
 
     @Test
@@ -264,7 +264,7 @@ class BannerMergeTest {
             dsl { text = "DEV" },
         )
 
-        assertEquals(listOf(MAIN_BANNER), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER), merged.map { it.name.get() })
     }
 
     @Test
@@ -272,7 +272,7 @@ class BannerMergeTest {
         // A banner inheriting the block's text would stamp the same marker twice.
         val merged = merge(dsl(), dsl(), dsl { text = "DEV"; banner("sha") { color.set("#00FF00") } })
 
-        assertEquals(listOf(MAIN_BANNER), merged.map { it.name })
+        assertEquals(listOf(MAIN_BANNER), merged.map { it.name.get() })
         assertEquals("DEV", merged.single().text.get())
     }
 
@@ -293,8 +293,8 @@ class BannerMergeTest {
             },
         )
 
-        val main = merged.single { it.name == MAIN_BANNER }
-        val sha = merged.single { it.name == "sha" }
+        val main = merged.single { it.name.get() == MAIN_BANNER }
+        val sha = merged.single { it.name.get() == "sha" }
         assertEquals(BannerDefaults.POSITION, main.position.get())
         assertEquals(85, sha.position.get())
     }
@@ -321,7 +321,7 @@ class BannerMergeTest {
             },
         )
 
-        val sha = merged.single { it.name == "sha" }
+        val sha = merged.single { it.name.get() == "sha" }
         assertEquals("#00FF00", sha.color.get())
         assertEquals("#000000", sha.textColor.get())
         assertEquals(70, sha.monochromeAlpha.get())
@@ -330,9 +330,9 @@ class BannerMergeTest {
         assertEquals(11, sha.maxTextSize.get())
         assertEquals(1.2, sha.lineHeight.get())
         assertEquals(4, sha.z.get())
-        assertEquals("Inter", sha.fontFamily.get())
-        assertEquals(400, sha.fontWeight.get())
-        assertEquals(true, sha.fontItalic.get())
+        assertEquals("Inter", sha.font.family.get())
+        assertEquals(400, sha.font.weight.get())
+        assertEquals(true, sha.font.italic.get())
     }
 
     @Test
@@ -377,7 +377,7 @@ class BannerMergeTest {
             dsl { banner("sha") },
         )
 
-        assertEquals(listOf("sha"), merged.map { it.name })
+        assertEquals(listOf("sha"), merged.map { it.name.get() })
     }
 
     // ------------------------------------------------------------ the reserved name
@@ -417,7 +417,7 @@ class BannerMergeTest {
             },
         )
 
-        assertEquals(listOf("zulu", "alpha"), merged.map { it.name })
+        assertEquals(listOf("zulu", "alpha"), merged.map { it.name.get() })
     }
 
     @Test
@@ -429,7 +429,7 @@ class BannerMergeTest {
             dsl { banner("project") { text = "P" } },
         )
 
-        assertEquals(listOf("project", "flavor", "buildType"), merged.map { it.name })
+        assertEquals(listOf("project", "flavor", "buildType"), merged.map { it.name.get() })
     }
 
     @Test
@@ -440,7 +440,7 @@ class BannerMergeTest {
             dsl { text = "DEV" },
         )
 
-        assertEquals(MAIN_BANNER, merged.first().name)
+        assertEquals(MAIN_BANNER, merged.first().name.get())
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.BannerCorner
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 
@@ -36,36 +37,17 @@ internal object BannerDefaults {
 }
 
 /**
- * One merged banner for one variant. Every value is still lazy; nothing here has been evaluated.
- */
-internal class ResolvedBanner(
-    /** The DSL name; `main` for the one made of the blocks' own properties. */
-    val name: String,
-    val text: Provider<String>,
-    val color: Provider<String>,
-    val textColor: Provider<String>,
-    val monochromeAlpha: Provider<Int>,
-    val corner: Provider<BannerCorner>,
-    val position: Provider<Int>,
-    val maxTextSize: Provider<Int>,
-    val lineHeight: Provider<Double>,
-    val z: Provider<Int>,
-    val fontFamily: Provider<String>,
-    val fontWeight: Provider<Int>,
-    val fontItalic: Provider<Boolean>,
-)
-
-/**
- * Merges the blocks applying to one variant into every banner it gets. Empty means no tasks.
+ * Merges the blocks applying to one variant into every banner it gets, already in the shape the
+ * tasks take. Empty means no tasks. Every value is still lazy; nothing here has been evaluated.
  *
  * [sources] must be in AGP's precedence order: build type, product flavors in dimension order,
  * then the project block. `main` always comes first, having no declared position to observe.
  */
-internal fun mergeBanner(sources: List<IconBannerDsl>): List<ResolvedBanner> {
-    val main = mergeOne(MAIN_BANNER, textSources = sources, all = sources)
+internal fun mergeBanner(objects: ObjectFactory, sources: List<IconBannerDsl>): List<BannerInput> {
+    val main = objects.mergeOne(MAIN_BANNER, textSources = sources, all = sources)
     val named = declarationOrder(sources).mapNotNull { name ->
         val own: List<IconBannerOptions> = sources.mapNotNull { it.banners.findByName(name) }
-        mergeOne(name, textSources = own, all = own + sources)
+        objects.mergeOne(name, textSources = own, all = own + sources)
     }
     return listOfNotNull(main) + named
 }
@@ -85,27 +67,28 @@ private fun declarationOrder(sources: List<IconBannerDsl>): List<String> =
  * [textSources] is where `text` may come from — for a named banner its own declarations alone,
  * since a block-level `text` belongs to `main`. [all] is every source for everything else.
  */
-private fun mergeOne(
+private fun ObjectFactory.mergeOne(
     name: String,
     textSources: List<IconBannerOptions>,
     all: List<IconBannerOptions>,
-): ResolvedBanner? {
+): BannerInput? {
     val text = resolveText(textSources) ?: return null
-    return ResolvedBanner(
-        name = name,
-        text = text,
-        color = merge(all, BannerDefaults.COLOR) { it.color },
-        textColor = merge(all, BannerDefaults.TEXT_COLOR) { it.textColor },
-        monochromeAlpha = merge(all, BannerDefaults.MONOCHROME_ALPHA) { it.monochromeAlpha },
-        corner = merge(all, BannerDefaults.CORNER) { it.corner },
-        position = merge(all, BannerDefaults.POSITION) { it.position },
-        maxTextSize = merge(all, BannerDefaults.MAX_TEXT_SIZE) { it.maxTextSize },
-        lineHeight = merge(all, BannerDefaults.LINE_HEIGHT) { it.lineHeight },
-        z = merge(all, BannerDefaults.Z) { it.z },
-        fontFamily = merge(all, BannerDefaults.FONT) { it.font },
-        fontWeight = merge(all, BannerDefaults.WEIGHT) { it.weight },
-        fontItalic = merge(all, BannerDefaults.ITALIC) { it.italic },
-    )
+    // Never empty from here on: the text came out of one of them.
+    return newInstance(BannerInput::class.java).also { banner ->
+        banner.name.set(name)
+        banner.text.set(text)
+        banner.color.set(merge(all, BannerDefaults.COLOR) { it.color })
+        banner.textColor.set(merge(all, BannerDefaults.TEXT_COLOR) { it.textColor })
+        banner.monochromeAlpha.set(merge(all, BannerDefaults.MONOCHROME_ALPHA) { it.monochromeAlpha })
+        banner.corner.set(merge(all, BannerDefaults.CORNER) { it.corner })
+        banner.position.set(merge(all, BannerDefaults.POSITION) { it.position })
+        banner.maxTextSize.set(merge(all, BannerDefaults.MAX_TEXT_SIZE) { it.maxTextSize })
+        banner.lineHeight.set(merge(all, BannerDefaults.LINE_HEIGHT) { it.lineHeight })
+        banner.z.set(merge(all, BannerDefaults.Z) { it.z })
+        banner.font.family.set(merge(all, BannerDefaults.FONT) { it.font })
+        banner.font.weight.set(merge(all, BannerDefaults.WEIGHT) { it.weight })
+        banner.font.italic.set(merge(all, BannerDefaults.ITALIC) { it.italic })
+    }
 }
 
 /** The winning `text`, or `null`. From assignment state alone, so a provider is never forced. */
@@ -120,15 +103,10 @@ private fun resolveText(sources: List<IconBannerOptions>): Provider<String>? {
     return null
 }
 
+/** The first of [sources] to set the property, else [default]. [sources] is never empty. */
 private fun <T : Any> merge(
     sources: List<IconBannerOptions>,
     default: T,
     select: (IconBannerOptions) -> Property<T>,
-): Provider<T> {
-    var merged: Provider<T>? = null
-    for (source in sources) {
-        val property = select(source)
-        merged = merged?.orElse(property) ?: property
-    }
-    return merged?.orElse(default) ?: throw IllegalArgumentException("No iconBanner blocks to merge")
-}
+): Provider<T> =
+    sources.map(select).reduce<Provider<T>, Property<T>> { merged, next -> merged.orElse(next) }.orElse(default)
