@@ -100,13 +100,23 @@ class RibbonTest {
         }
     }
 
+    /** What is left of the band above and below the glyphs, measured across the ribbon. */
+    private fun padding(corner: BannerCorner, ribbon: Ribbon): Double =
+        (perpendicularBandWidth(corner, ribbon) - ribbon.textSize) / 2.0
+
+    /**
+     * How far a point of a [BannerCorner.TOP_LEFT] ribbon on a 108 viewport is from the icon's centre,
+     * measured along the band's normal. Larger means closer to the rim.
+     */
+    private fun fromIconCentre(x: Double, y: Double): Double = ((54.0 - x) + (54.0 - y)) / sqrt2
+
     @Test
     fun `the text fills the band as tightly as the line height says`() {
         // At 1.5 the glyphs take two thirds of the band.
         val ribbon = ribbon(BannerCorner.TOP_LEFT)
         val band = perpendicularBandWidth(BannerCorner.TOP_LEFT, ribbon)
         assertEquals(1 / 1.5, ribbon.textSize / band, 1e-9)
-        assertEquals(0.25, ribbon.padding / ribbon.textSize, 1e-9)
+        assertEquals(0.25, padding(BannerCorner.TOP_LEFT, ribbon) / ribbon.textSize, 1e-9)
     }
 
     @Test
@@ -131,8 +141,8 @@ class RibbonTest {
         assertEquals(tight.pivotY, loose.pivotY, 1e-9)
         assertEquals(tight.textRotationDegrees, loose.textRotationDegrees)
         // Padding is not a knob of its own: it is whatever the line height left over.
-        assertEquals(0.0, tight.padding, 1e-9)
-        assertEquals(tight.textSize / 2, loose.padding, 1e-9)
+        assertEquals(0.0, padding(BannerCorner.TOP_LEFT, tight), 1e-9)
+        assertEquals(tight.textSize / 2, padding(BannerCorner.TOP_LEFT, loose), 1e-9)
     }
 
     @Test
@@ -149,7 +159,7 @@ class RibbonTest {
         // Both measured along the ribbon, so no √2 belongs here.
         assertEquals(
             long.textLengthBudget,
-            long.textSize * 5.6 + 2 * long.endPadding,
+            long.textSize * 5.6 + 2 * Ribbon.END_PADDING_PER_CAP_HEIGHT * long.textSize,
             1e-9,
         )
     }
@@ -208,7 +218,7 @@ class RibbonTest {
         val ribbon = ribbon(BannerCorner.TOP_LEFT)
         // The safe zone, not the square: the square lets text run past the mask.
         val offset = (108.0 - centreLine) / sqrt2
-        assertEquals(offset, ribbon.perpendicularFromIconCentre(ribbon.centreLineAxis), 1e-9)
+        assertEquals(offset, fromIconCentre(ribbon.pivotX, ribbon.pivotY), 1e-9)
         val acrossSafeZone = 2 * Math.sqrt(33.0 * 33.0 - offset * offset)
         assertEquals(acrossSafeZone, ribbon.textLengthBudget, 1e-9)
         assertTrue(
@@ -222,9 +232,10 @@ class RibbonTest {
         // Not a constraint, but the trade the default position and line height were picked for.
         val ribbon = ribbon(BannerCorner.TOP_LEFT)
         val safeRadius = Ribbon.SAFE_ZONE_FRACTION * 108.0
-        val cornerSideOffset = ribbon.perpendicularFromIconCentre(ribbon.cornerSideEdgeAxis)
+        // p3/p4 on the corner-side edge, p1/p2 on the inner one.
+        val cornerSideOffset = fromIconCentre(ribbon.p4x, ribbon.p4y)
         assertTrue(cornerSideOffset < safeRadius, "corner-side edge at $cornerSideOffset is outside the safe zone")
-        val innerOffset = ribbon.perpendicularFromIconCentre(ribbon.innerEdgeAxis)
+        val innerOffset = fromIconCentre(ribbon.p1x, ribbon.p1y)
         assertTrue(innerOffset > 0.08 * 108.0, "inner edge at $innerOffset all but covers the icon's centre")
     }
 
@@ -300,12 +311,13 @@ class RibbonTest {
 
     @Test
     fun `the axis intercept and the distance from the centre agree`() {
-        // The inverse of how centreLineAxis is derived, so a round trip must land where it started.
+        // Measured off the drawn band rather than the intercept it was built from, so the √2 between
+        // the two cannot cancel out of both sides.
         listOf(20.0, 65.0, 95.0).forEach { position ->
             val ribbon = ribbon(BannerCorner.TOP_LEFT, positionPercent = position)
             assertEquals(
                 ribbon.centreLineFromCentre,
-                ribbon.perpendicularFromIconCentre(ribbon.centreLineAxis),
+                fromIconCentre(ribbon.pivotX, ribbon.pivotY),
                 1e-9,
                 "at $position",
             )
