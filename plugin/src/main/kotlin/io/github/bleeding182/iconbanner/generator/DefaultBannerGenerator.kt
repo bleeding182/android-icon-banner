@@ -109,7 +109,7 @@ private class Session(private val request: BannerRequest) {
                 // A bitmap backing the icon itself is a legacy launcher icon. No monochrome pass — such
                 // an icon has no monochrome layer.
                 is SourceContent.Raster ->
-                    bannerRaster(source, describedAs = source.relativePath, mode = Mode.STANDALONE_ICON)
+                    bannerRaster(content.bytes, source, describedAs = source.relativePath, Mode.STANDALONE_ICON)
             }
         }
     }
@@ -242,7 +242,7 @@ private class Session(private val request: BannerRequest) {
                     }
                     bannerVector(document, source, describedAs, mode, renameTo)
                 }
-                is SourceContent.Raster -> bannerRaster(source, describedAs, mode, renameTo)
+                is SourceContent.Raster -> bannerRaster(content.bytes, source, describedAs, mode, renameTo)
             }
         }
     }
@@ -281,6 +281,7 @@ private class Session(private val request: BannerRequest) {
      * only one.
      */
     private fun bannerRaster(
+        bytes: ByteArray,
         source: SourceResource,
         describedAs: String,
         mode: Mode,
@@ -289,7 +290,7 @@ private class Session(private val request: BannerRequest) {
         // A guard rather than a feature: the marker border is part of the file, so compositing over it
         // would corrupt the resource.
         if (source.isNinePatch) return skip(source, "it is a nine-patch")
-        val image = decode(source)
+        val image = decode(bytes, source.relativePath)
             ?: return skip(source, "no image reader could decode it")
 
         paint(image, describedAs, mode)
@@ -348,11 +349,10 @@ private class Session(private val request: BannerRequest) {
      * whose legacy icons are PNG would otherwise fetch a WebP reader it has no use for, and *fail* where
      * that resolution cannot reach a repository. Decoding a 192px icon twice costs nothing beside it.
      */
-    private fun decode(source: SourceResource): BufferedImage? {
-        val bytes = source.bytes!!
+    private fun decode(bytes: ByteArray, resourcePath: String): BufferedImage? {
         RasterIcon.decode(bytes)?.let { return it }
         // False means an earlier file already registered them, so a second attempt would repeat the first.
-        if (!ensureImageReaders(source.relativePath)) return null
+        if (!ensureImageReaders(resourcePath)) return null
         return RasterIcon.decode(bytes)
     }
 

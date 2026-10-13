@@ -1,9 +1,10 @@
 package io.github.bleeding182.iconbanner.gradle
 
 import io.github.bleeding182.iconbanner.api.ResourceRef
+import io.github.bleeding182.iconbanner.api.SourceContent
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -46,7 +47,7 @@ class DirectoryResourceLookupTest {
         val found = lookup("dev", "main").find(ResourceRef("drawable", "ic"))
 
         assertEquals(1, found.size)
-        assertEquals("<vector>flavor</vector>", found.single().xml)
+        assertEquals(SourceContent.Xml("<vector>flavor</vector>"), found.single().content)
     }
 
     @Test
@@ -57,8 +58,8 @@ class DirectoryResourceLookupTest {
 
         val found = lookup("dev", "main").find(ResourceRef("drawable", "ic")).associateBy { it.relativePath }
 
-        assertEquals("<vector>flavor</vector>", found.getValue("drawable/ic.xml").xml)
-        assertEquals("<vector>main v24</vector>", found.getValue("drawable-v24/ic.xml").xml)
+        assertEquals(SourceContent.Xml("<vector>flavor</vector>"), found.getValue("drawable/ic.xml").content)
+        assertEquals(SourceContent.Xml("<vector>main v24</vector>"), found.getValue("drawable-v24/ic.xml").content)
     }
 
     @Test
@@ -68,9 +69,9 @@ class DirectoryResourceLookupTest {
         val found = lookup("main").find(ResourceRef("mipmap", "ic_launcher")).single()
 
         assertEquals("mipmap-hdpi/ic_launcher.webp", found.relativePath)
-        assertNull(found.xml)
+        val content = assertInstanceOf(SourceContent.Raster::class.java, found.content)
         // The pixels are what a bannered bitmap is composited onto, so they have to arrive intact.
-        assertArrayEquals(file.readBytes(), found.bytes)
+        assertArrayEquals(file.readBytes(), content.bytes)
     }
 
     @Test

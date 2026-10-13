@@ -67,12 +67,6 @@ internal data class SourceResource(
     /** Path relative to a resource root, e.g. `drawable-v24/ic_launcher_foreground.xml`. */
     val relativePath: String get() = "$qualifiers/$fileName"
 
-    /** The XML, or null for a bitmap. */
-    val xml: String? get() = (content as? SourceContent.Xml)?.text
-
-    /** The pixels, or null for XML. */
-    val bytes: ByteArray? get() = (content as? SourceContent.Raster)?.bytes
-
     /** `ic_launcher.9.png`. The resource name stops at the first dot, so the marker is what is left. */
     val isNinePatch: Boolean get() = fileName.substringBeforeLast('.').endsWith(".9")
 }
