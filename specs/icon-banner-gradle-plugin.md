@@ -682,8 +682,8 @@ corners; the remaining extension is edge positions (top, bottom, left, right).
 
 That half is cheap now, and deliberately so: `position` is a distance from the icon's centre, which
 is the one measurement a corner and an edge share, so an edge banner is a new entry in the corner
-table and a rotation, not a second sizing model. `Ribbon.perpendicularFromIconCentre` and the quad
-tables are the only places that know a corner from an edge.
+table and a rotation, not a second sizing model. `Ribbon.centreLineAxis` and the quad tables are the
+only places that know a corner from an edge.
 
 One thing to decide when it happens, and it is less obvious than the four sides sound. At the default
 position an edge band lands 27.7–37.5 on a 108 canvas against a visible mask of 18–90 — a belt across
@@ -829,7 +829,7 @@ the corrected figures.
 
 The fix is naming, not a correction factor sprinkled at the call site. Axis-measured lengths carry an
 `Axis` suffix — `centreLineAxis`, `innerEdgeAxis`, `cornerSideEdgeAxis`, `bandWidthAxis` — everything
-else is a true distance, and `Ribbon.perpendicularFromIconCentre` is the only place the two meet. The
+else is a true distance, and `centreLineAxis` and `bandWidthAxis` are the only places the two meet. The
 ambiguity *was* the bug: the old `bandWidth` was right as an axis offset and wrong as the thickness
 its own documentation claimed, and neither a golden file nor a coordinate assertion could tell those
 apart. The tests now project the quad onto the band's normal and assert the separation of the two long

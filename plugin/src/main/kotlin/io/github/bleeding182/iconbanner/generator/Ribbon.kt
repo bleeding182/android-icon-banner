@@ -13,8 +13,8 @@ import io.github.bleeding182.iconbanner.api.BannerCorner
  * mask. Two banners in one corner overlap at any `position`, both being parallel to one diagonal.
  */
 internal class Ribbon(
-    val viewportWidth: Double,
-    val viewportHeight: Double,
+    private val viewportWidth: Double,
+    private val viewportHeight: Double,
     private val corner: BannerCorner,
     positionPercent: Double,
     maxTextSizePercent: Double,
@@ -22,7 +22,7 @@ internal class Ribbon(
     textWidthPerCapHeight: Double? = null,
 ) {
 
-    val s: Double = minOf(viewportWidth, viewportHeight)
+    private val s: Double = minOf(viewportWidth, viewportHeight)
 
     private val safeRadius: Double = SAFE_ZONE_FRACTION * s
 
@@ -118,13 +118,6 @@ internal class Ribbon(
     val pivotX: Double get() = (p1x + p2x + p3x + p4x) / 4.0
     val pivotY: Double get() = (p1y + p2y + p3y + p4y) / 4.0
 
-    val padding: Double get() = (bandThickness - textSize) / 2.0
-
-    val endPadding: Double get() = END_PADDING_PER_CAP_HEIGHT * textSize
-
-    /** Inverse of how [centreLineAxis] is derived. Larger means closer to the rim. */
-    fun perpendicularFromIconCentre(axisDistance: Double): Double = (s - axisDistance) / SQRT_2
-
     fun quadPathData(): String = buildString {
         append("M ").append(p1x.toPathNumber()).append(' ').append(p1y.toPathNumber())
         append(" L ").append(p2x.toPathNumber()).append(' ').append(p2y.toPathNumber())
@@ -183,7 +176,7 @@ internal class Ribbon(
         /** Safe zone, 66dp of 108. The mask is 72dp; the margin covers mask *shape*. */
         const val SAFE_ZONE_FRACTION: Double = 33.0 / 108.0
 
-        /** Only [bandWidthAxis], [centreLineAxis] and [perpendicularFromIconCentre] may use this. */
+        /** Only [bandWidthAxis] and [centreLineAxis] may use this. */
         private val SQRT_2: Double = Math.sqrt(2.0)
     }
 }
