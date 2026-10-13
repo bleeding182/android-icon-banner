@@ -231,6 +231,9 @@ where the generate task enters the task graph it resolves during configuration.
   as `android:icon="${appIcon}"` is not substituted, and the build fails; declare `android:icon` in
   `src/<flavor>/AndroidManifest.xml` instead. Likewise `tools:remove` on `android:roundIcon` is not
   seen, so declare icons per flavor rather than removing them.
+- **The icon has to live in the app module.** Only the module's own `res` directories are searched,
+  so an icon that comes from a library module or an AAR fails with "was not found in the app's
+  resources". Copy the icon into the app module to banner it.
 - A nine-patch, or a bitmap no reader can decode, is skipped with a warning. If a variant asks for a
   banner and *nothing* in its icon could take one, the build fails rather than silently shipping an
   unmarked icon.

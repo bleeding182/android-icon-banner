@@ -337,7 +337,12 @@ private class Session(private val request: BannerRequest) {
      */
     private fun eachSource(ref: ResourceRef, subject: String, banner: (SourceResource) -> String?) {
         val sources = request.resources.find(ref).sortedBy { it.relativePath }
-        if (sources.isEmpty()) fail("$subject was not found in the app's resources.")
+        if (sources.isEmpty()) {
+            fail(
+                "$subject was not found in the app's resources. Note that only this module's own res " +
+                    "directories are searched; icons from library modules or AARs are not supported."
+            )
+        }
         // mapNotNull, not any: every qualifier variant gets its own bannered copy.
         val skipped = sources.mapNotNull { source ->
             banner(source)?.let { reason -> "${source.relativePath} ($reason)" }

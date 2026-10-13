@@ -29,7 +29,14 @@ class BannerGeneratorFailureTest {
     @Test
     fun `a missing icon resource fails`() {
         val message = generate(request(FakeResources())).failureMessage()
-        assertMessageContains(message, "@mipmap/ic_launcher", "not found")
+        // The likeliest cause in a project that builds fine: the icon lives in a library or an AAR.
+        assertMessageContains(
+            message,
+            "@mipmap/ic_launcher",
+            "not found",
+            "only this module's own res directories are searched",
+            "library modules or AARs are not supported",
+        )
     }
 
     @Test

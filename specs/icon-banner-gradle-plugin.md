@@ -1234,6 +1234,10 @@ exercised with a local file, which is the only fake the suite needs.
 ## Out of Scope
 
 - **Standalone banners.** Banners on drawables other than the launcher icon.
+- **Icons from library modules or AARs.** Only the app module's own static res directories are
+  searched; an icon that resolves from a dependency fails as not found, and the message says why.
+  Bannering one would mean reading dependency resources, which the same-name override would then
+  have to shadow from the app.
 - **Manual banner placement** — arbitrary coordinates, rotation, or shapes other than the corner
   ribbon. `position` slides a banner along its own diagonal and is not a general placement knob.
 - **AGP 8 and Gradle 8 support.** Deliberately deferred; the design is not structured to make
