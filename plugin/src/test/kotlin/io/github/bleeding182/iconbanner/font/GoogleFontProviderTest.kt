@@ -101,6 +101,23 @@ class GoogleFontProviderTest {
     }
 
     @Test
+    fun `a provider on a warm cache starts no http client thread of its own`(@TempDir cacheDir: File) {
+        server().use { server ->
+            provider(cacheDir, server).resolve(robotoMonoBold)
+            val before = httpClientSelectorThreads()
+
+            // What the font task does on every run: a fresh provider, served from the cache.
+            provider(cacheDir, server).resolve(robotoMonoBold)
+
+            assertTrue(
+                httpClientSelectorThreads() <= before,
+                "a second provider started another HttpClient selector thread, " +
+                    "${httpClientSelectorThreads()} now against $before before",
+            )
+        }
+    }
+
+    @Test
     fun `offline with a cold cache names the url it needed`(@TempDir cacheDir: File) {
         server().use { server ->
             val failure = assertFailsWith<FontResolutionException> {
@@ -396,6 +413,10 @@ class GoogleFontProviderTest {
             cssEndpoint = server.cssEndpoint,
             fontOrigin = server.baseUrl,
         )
+
+    /** Each JDK HttpClient owns one of these until it is collected; a daemon would accumulate them. */
+    private fun httpClientSelectorThreads(): Int =
+        Thread.getAllStackTraces().keys.count { it.isAlive && it.name.matches(Regex("""HttpClient-\d+-SelectorManager""")) }
 
     private fun cachedFileNames(cacheDir: File): List<String> {
         val files = cacheDir.toPath().resolve("files")

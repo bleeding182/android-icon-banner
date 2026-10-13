@@ -30,10 +30,20 @@ internal class GoogleFontProvider(
 
     private val cache = FontCache(cacheDirectory.toPath())
 
-    private val httpClient: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .build()
+    /**
+     * Built lazily, so a provider served entirely from the cache never starts one: each JDK client
+     * starts a selector thread that lives until it is collected, and Java 17 has no `close()`. Not
+     * shared in the companion either, where that thread would hold the plugin's classloader for the
+     * daemon's lifetime; this one goes with its provider.
+     */
+    private val httpClient: HttpClient by lazy {
+        HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            // checkOrigin guards the URLs taken from response bodies and from disk. A redirect
+            // comes from the trusted origin itself, over TLS, so following it needs no such check.
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build()
+    }
 
     override fun resolve(spec: FontSpec): File {
         validate(spec)
