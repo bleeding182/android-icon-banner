@@ -245,21 +245,14 @@ class RasterBannerPainterTest {
 
     /**
      * A bitmap fill has to be resolved here, so a colour the plugin cannot parse itself is a failure
-     * rather than a silent black band.
+     * rather than a silent black band. The Gradle layer refuses such a colour first, so one reaching the
+     * painter is a wiring mistake.
      */
     @Test
     fun `a colour a bitmap cannot be painted with fails`() {
-        val failure = assertFailsWith<GeneratorFailure> {
-            painter(style(color = "crimson"))
-                .paintColored(image(), "mipmap-hdpi/ic_launcher.png", clipToSilhouette = false)
-        }
+        val failure = assertFailsWith<IllegalStateException> { painter(style(color = "crimson")) }
 
-        assertMessageContains(
-            failure.message.orEmpty(),
-            "mipmap-hdpi/ic_launcher.png",
-            "crimson",
-            "hex literal",
-        )
+        assertMessageContains(failure.message.orEmpty(), "Internal error", "crimson")
     }
 
     /** `Clear` and `SrcAtop` on an image with no alpha channel paint black, and silently. */

@@ -26,6 +26,13 @@ internal class BannerPainter(
 ) {
 
     /**
+     * The bitmap fills, parsed once. The Gradle layer accepts exactly the colours
+     * [RasterIcon.parseColor] reads, so one that does not parse got here some other way.
+     */
+    private val ribbonColor: Color = parseColor(style.color, "color")
+    private val textColor: Color = parseColor(style.textColor, "textColor")
+
+    /**
      * The ribbon, then the text on top, appended at the root — above everything, and unaffected by
      * the original vector's groups and transforms. Painters stack in call order.
      */
@@ -116,10 +123,10 @@ internal class BannerPainter(
         val ribbon = ribbonFor(image)
         image.paint {
             if (clipToSilhouette) composite = AlphaComposite.SrcAtop
-            color = colorOf(style.color, "color", describedAs)
+            color = ribbonColor
             fill(ribbon.quad())
             fittedText(ribbon)?.let { fitted ->
-                color = colorOf(style.textColor, "textColor", describedAs)
+                color = textColor
                 // After the band, so its own alpha lands on the band and not on the artwork below.
                 fill(fitted.glyphs)
             }
@@ -200,12 +207,9 @@ internal class BannerPainter(
         closePath()
     }
 
-    private fun colorOf(value: String, property: String, describedAs: String): Color =
+    private fun parseColor(value: String, property: String): Color =
         RasterIcon.parseColor(value)
-            ?: fail(
-                "$describedAs: banner \"${style.name}\" has $property \"$value\", which is not a colour " +
-                    "a bitmap icon can be painted with. Use a hex literal such as #FFE91E63."
-            )
+            ?: error("Internal error: banner \"${style.name}\" has $property \"$value\", which is not a hex colour.")
 
     /**
      * The fitted glyphs, however small the fit made them. Text too long for the ribbon is drawn smaller
