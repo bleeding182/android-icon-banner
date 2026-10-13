@@ -109,8 +109,27 @@ class GoogleFontProviderTest {
 
             assertContains(failure.message!!, "${server.cssEndpoint}?family=Roboto+Mono:wght@700")
             assertContains(failure.message!!, "offline")
+            // The fix has to be something a user can do: there is no fetching a CSS URL by hand.
+            assertContains(failure.message!!, "run one build without --offline")
+            assertContains(failure.message!!, cacheDir.absolutePath)
+            assertTrue("yourself" !in failure.message!!, failure.message)
             assertEquals(0, server.snapshot().size, "offline mode must not make requests")
         }
+    }
+
+    @Test
+    fun `an unreachable service names the cache and how to warm it`(@TempDir cacheDir: File) {
+        val closed = server()
+        val provider = provider(cacheDir, closed)
+        closed.close()
+
+        val failure = assertFailsWith<FontResolutionException> { provider.resolve(robotoMonoBold) }
+
+        val message = failure.message!!
+        assertContains(message, cacheDir.absolutePath)
+        assertContains(message, "iconbanner.fontCacheDir")
+        assertContains(message, "systemProp.https.proxyHost")
+        assertTrue(": null" !in message, message)
     }
 
     @Test

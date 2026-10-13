@@ -108,8 +108,8 @@ internal class GoogleFontProvider(
             "${spec.describe()} has never been resolved on this machine, and the build is offline."
         }
         return FontResolutionException(
-            "$what Warm the cache at ${cacheDirectory.absolutePath} with one online build, or fetch " +
-                "$missing yourself.",
+            "$what It needs $missing. To fix this, run one build without --offline, which caches the " +
+                "font in ${cacheDirectory.absolutePath} for every later build on this machine.",
         )
     }
 
@@ -160,7 +160,16 @@ internal class GoogleFontProvider(
         try {
             return httpClient.send(request, handler)
         } catch (e: IOException) {
-            throw FontResolutionException("Could not reach $url: ${e.message}", e)
+            // Often a ConnectException with no message at all, so the class is what says what happened.
+            val cause = listOfNotNull(e.javaClass.name, e.message).joinToString(": ")
+            throw FontResolutionException(
+                "Could not reach $url ($cause). The banner font is fetched once per machine into " +
+                    "${cacheDirectory.absolutePath}. Behind a proxy, set systemProp.https.proxyHost and " +
+                    "systemProp.https.proxyPort in gradle.properties. Without network access, copy a " +
+                    "warmed copy of that directory here, or point the iconbanner.fontCacheDir Gradle " +
+                    "property at one.",
+                e,
+            )
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             throw FontResolutionException("Interrupted while fetching $url", e)
