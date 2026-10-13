@@ -169,13 +169,25 @@ private fun java.io.File.invariantPath(): String = path.replace('\\', '/')
  * Where downloaded fonts live. Shared across projects and outliving `clean`, since the plugin bundles
  * no fonts at all. [FONT_CACHE_PROPERTY] overrides it, for CI and for keeping tests off the network.
  */
-private fun fontCacheDirectory(project: org.gradle.api.Project): java.io.File {
-    val override = project.providers.gradleProperty(FONT_CACHE_PROPERTY).orNull
-    return if (override != null) {
-        project.layout.projectDirectory.dir(override).asFile
-    } else {
-        project.gradle.gradleUserHomeDir.resolve("caches/android-icon-banner/fonts")
-    }
+private fun fontCacheDirectory(project: org.gradle.api.Project): java.io.File = fontCacheDirectory(
+    override = project.providers.gradleProperty(FONT_CACHE_PROPERTY).orNull,
+    settingsDirectory = project.layout.settingsDirectory.asFile,
+    gradleUserHome = project.gradle.gradleUserHomeDir,
+)
+
+/**
+ * A relative [override] resolves against the build's root (the settings directory), not the module
+ * applying the plugin: one `iconbanner.fontCacheDir=fonts` in the root `gradle.properties` should
+ * mean one cache, not one per module.
+ */
+internal fun fontCacheDirectory(
+    override: String?,
+    settingsDirectory: java.io.File,
+    gradleUserHome: java.io.File,
+): java.io.File = if (override != null) {
+    settingsDirectory.resolve(override).normalize()
+} else {
+    gradleUserHome.resolve("caches/android-icon-banner/fonts")
 }
 
 internal const val FONT_CACHE_PROPERTY = "iconbanner.fontCacheDir"

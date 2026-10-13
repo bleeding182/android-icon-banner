@@ -169,8 +169,10 @@ families there are now published as variable fonts, and `java.awt.Font` cannot i
 axis, which would break the `weight` option.
 
 `--offline` uses the cache or fails naming the URL it needed. Set the `iconbanner.fontCacheDir`
-Gradle property to relocate the cache, which is useful for a warmed, restorable cache on CI — use an
-absolute path, as a relative one resolves against the module the plugin is applied to.
+Gradle property to relocate the cache, which is useful for a warmed, restorable cache on CI. A
+relative path resolves against the root of the build (the directory holding `settings.gradle.kts`), so
+every module shares the one cache. In a composite build each included build resolves it against its
+own root, so use an absolute path to share one cache across them.
 
 The build fails if the chosen font has no glyph for a character in the banner text, rather than
 rendering a row of tofu.
