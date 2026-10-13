@@ -138,9 +138,38 @@ class GoogleFontProviderTest {
             assertContains(message, "'Roboto Mono'")
             assertContains(message, "weight 700")
             assertContains(message, "HTTP 400")
+            assertContains(message, "case-sensitive")
             // The body is included, but stripped of the ten kilobytes of script wrapped around it.
             assertContains(message, "Missing font family")
             assertTrue("<script" !in message, "the error page's markup leaked into the message")
+        }
+    }
+
+    @Test
+    fun `a family typed in another case is not served from the cached spelling`(@TempDir cacheDir: File) {
+        server().use { server ->
+            val provider = provider(cacheDir, server)
+            provider.resolve(robotoMonoBold)
+
+            // css2 is case-sensitive: a lowercase family is a 400 there, so it must not pass locally.
+            provider.resolve(FontSpec("roboto mono", 700, false))
+
+            assertEquals(2, server.cssRequests.size)
+            assertEquals("family=roboto+mono:wght@700", server.cssRequests.last().query)
+        }
+    }
+
+    @Test
+    fun `a rate limit is not reported as a font google does not offer`(@TempDir cacheDir: File) {
+        server().use { server ->
+            server.css = { _, _ -> 429 to "Too Many Requests".toByteArray(UTF_8) }
+
+            val failure = assertFailsWith<FontResolutionException> {
+                provider(cacheDir, server).resolve(robotoMonoBold)
+            }
+
+            assertContains(failure.message!!, "HTTP 429")
+            assertTrue("does not offer" !in failure.message!!, failure.message)
         }
     }
 

@@ -116,15 +116,20 @@ internal class GoogleFontProvider(
     private fun fetchCss(cssUrl: String, spec: FontSpec): String {
         val response = send(cssUrl, HttpResponse.BodyHandlers.ofString(UTF_8))
         val status = response.statusCode()
-        if (status in 400..499) {
+        // Only 400 is css2's verdict on the font. 403, 407 and 429 are about the caller or the route.
+        if (status == 400) {
             throw FontResolutionException(
                 "Google Fonts does not offer ${spec.describe()}. $cssUrl returned HTTP $status. " +
+                    "Spell the family exactly as fonts.google.com lists it — family names are " +
+                    "case-sensitive, as on fonts.google.com — and pick a weight and style it has. " +
                     "Response: ${summarizeBody(response.body())}",
             )
         }
         if (status != 200) {
             throw FontResolutionException(
-                "Fetching $cssUrl failed with HTTP $status. Response: ${summarizeBody(response.body())}",
+                "Fetching $cssUrl failed with HTTP $status. This is not about the font's name: retry " +
+                    "later, or check the network or proxy between this machine and Google Fonts. " +
+                    "Response: ${summarizeBody(response.body())}",
             )
         }
         return response.body()

@@ -101,10 +101,14 @@ internal class FontCache(private val root: Path) {
     }
 
     companion object {
-        /** Identifies a face independently of how the user spelled the family. */
+        /**
+         * Identifies a face independently of the whitespace in the family, but not of its case:
+         * `css2` is case-sensitive, so `roboto mono` is a different request, and a failing one, rather
+         * than another spelling of `Roboto Mono`.
+         */
         fun specKey(spec: FontSpec): String = sha256(
             listOf(
-                spec.family.trim().replace(Regex("""\s+"""), " ").lowercase(),
+                spec.family.trim().replace(Regex("""\s+"""), " "),
                 spec.weight.toString(),
                 spec.italic.toString(),
             ).joinToString("|"),
