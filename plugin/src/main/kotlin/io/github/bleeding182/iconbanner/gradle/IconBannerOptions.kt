@@ -86,7 +86,7 @@ abstract class IconBannerOptions @Inject constructor(objects: ObjectFactory) {
      *
      * How big the ribbon looks — the band spans the whole corner, not just its text. Fine-tuning
      * rather than layout: the text is fitted against `2r · √(1 - position²)`, so going out costs
-     * size fast and coming in buys little. Text that stops fitting is drawn smaller, with a warning.
+     * size fast and coming in buys little. Text that stops fitting is drawn smaller.
      */
     abstract val position: Property<Int>
 
