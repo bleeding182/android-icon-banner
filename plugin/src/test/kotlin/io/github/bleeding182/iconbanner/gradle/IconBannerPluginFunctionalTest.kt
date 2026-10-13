@@ -236,6 +236,29 @@ class IconBannerPluginFunctionalTest {
     }
 
     @Test
+    fun `changing a banner's font reruns the font task`() {
+        fixture.primeFont(FontSpec("Roboto Mono", 400, true))
+        fun script(fontSettings: String) = fixture.buildScript(
+            """
+            |$flavors
+            |    productFlavors {
+            |        named("dev") { iconBanner { text = "DEV"$fontSettings } }
+            |    }
+            """.trimMargin()
+        )
+
+        script("")
+        fixture.runner(":downloadDevDebugIconBannerFont", "--no-build-cache").build()
+
+        // The face is the font task's only real input, so a different one must not be up to date.
+        script("; weight = 400; italic = true")
+        val second = fixture.runner(":downloadDevDebugIconBannerFont", "--no-build-cache").build()
+
+        assertEquals(TaskOutcome.SUCCESS, second.task(":downloadDevDebugIconBannerFont")?.outcome)
+        assertEquals(listOf("roboto-mono-400-italic.ttf"), fixture.fontDirectory("devDebug").list()?.sorted())
+    }
+
+    @Test
     fun `two banners on one variant land on one icon, from one pair of tasks`() {
         fixture.buildScript(
             """
