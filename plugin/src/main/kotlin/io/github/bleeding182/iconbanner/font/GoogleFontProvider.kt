@@ -21,16 +21,19 @@ import java.util.concurrent.ConcurrentHashMap
  * downloaded. Both are cached, both are skipped offline, and every URL is checked against
  * [fontOrigin] before it is opened.
  */
-internal class GoogleFontProvider @JvmOverloads constructor(
-    val cacheDirectory: File = defaultCacheDirectory(),
+internal class GoogleFontProvider(
+    val cacheDirectory: File,
     private val offline: Boolean = false,
     private val cssEndpoint: String = GOOGLE_FONTS_CSS_ENDPOINT,
     private val fontOrigin: String = GOOGLE_FONTS_FILE_ORIGIN,
-    private val userAgent: String = USER_AGENT,
-    private val httpClient: HttpClient = defaultHttpClient(),
 ) : FontProvider {
 
     private val cache = FontCache(cacheDirectory.toPath())
+
+    private val httpClient: HttpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(15))
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .build()
 
     override fun resolve(spec: FontSpec): File {
         validate(spec)
@@ -142,7 +145,7 @@ internal class GoogleFontProvider @JvmOverloads constructor(
     private fun <T> send(url: String, handler: HttpResponse.BodyHandler<T>): HttpResponse<T> {
         val request = try {
             HttpRequest.newBuilder(URI.create(url))
-                .header("User-Agent", userAgent)
+                .header("User-Agent", USER_AGENT)
                 .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build()
@@ -175,18 +178,5 @@ internal class GoogleFontProvider @JvmOverloads constructor(
         private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(30)
 
         private val locks = ConcurrentHashMap<String, Any>()
-
-        /** `<gradle user home>/caches/android-icon-banner/fonts`, honouring an overridden home. */
-        fun defaultCacheDirectory(): File {
-            val gradleUserHome = System.getProperty("gradle.user.home")
-                ?: System.getenv("GRADLE_USER_HOME")
-                ?: File(System.getProperty("user.home"), ".gradle").path
-            return File(gradleUserHome, "caches/android-icon-banner/fonts")
-        }
-
-        fun defaultHttpClient(): HttpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build()
     }
 }

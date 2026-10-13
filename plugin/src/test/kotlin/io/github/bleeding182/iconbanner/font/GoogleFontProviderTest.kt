@@ -304,16 +304,6 @@ class GoogleFontProviderTest {
         }
     }
 
-    @Test
-    fun `the default cache directory sits under the gradle user home`() {
-        val path = GoogleFontProvider.defaultCacheDirectory().path.replace(File.separatorChar, '/')
-
-        assertTrue(
-            path.endsWith("caches/android-icon-banner/fonts"),
-            "unexpected default cache directory: $path",
-        )
-    }
-
     private fun server() = FakeFontServer(fontFixture)
 
     /**

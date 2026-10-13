@@ -14,7 +14,6 @@ internal object IconBannerComponents {
 
     fun generator(): BannerGenerator = DefaultBannerGenerator()
 
-    /** From the build, not the provider's defaults, which would guess the Gradle user home. */
     fun fontProvider(cacheDir: File, offline: Boolean): FontProvider =
         GoogleFontProvider(cacheDirectory = cacheDir, offline = offline)
 }
