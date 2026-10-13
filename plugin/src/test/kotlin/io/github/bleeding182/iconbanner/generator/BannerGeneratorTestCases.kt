@@ -293,8 +293,9 @@ abstract class BannerGeneratorTestCases {
     @Test
     fun `a plain vector icon is bannered directly`() {
         val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground.xml"))
-        val files = generate(request(resources, style(), icon = DRAWABLE_ICON)).success().files
-        assertEquals(setOf("drawable/ic_launcher.xml"), files.keys)
+        val result = generate(request(resources, style(), icon = DRAWABLE_ICON)).success()
+        assertEquals(setOf("drawable/ic_launcher.xml"), result.files.keys)
+        assertEquals(listOf("drawable/ic_launcher.xml replaced by a bannered copy"), result.info)
     }
 
     // --------------------------------------------------------------- coverage
