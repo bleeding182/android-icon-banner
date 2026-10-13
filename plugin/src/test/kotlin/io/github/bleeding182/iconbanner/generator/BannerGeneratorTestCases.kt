@@ -120,6 +120,22 @@ abstract class BannerGeneratorTestCases {
         assertMatchesGolden("groups_coloured.xml", result.xml(FOREGROUND_PATH))
     }
 
+    /**
+     * A `<clip-path>` directly under `<vector>` clips every sibling after it, and the banner is appended
+     * after it — so the ribbon was cut down to the artwork's circle, or vanished entirely.
+     */
+    @Test
+    fun `a root clip path does not clip the coloured banner`() {
+        val resources = FakeResources().xml("drawable/ic_launcher.xml", input("foreground_root_clip.xml"))
+        val output = generate(request(resources, style(), icon = DRAWABLE_ICON)).success()
+            .xml("drawable/ic_launcher.xml")
+
+        val root = AndroidXml.parse(output, "drawable/ic_launcher.xml").documentElement
+        val rootChildren = (0 until root.childNodes.length).map { root.childNodes.item(it) }
+        assertTrue(rootChildren.none { it.nodeName == "clip-path" }, output)
+        assertMatchesGolden("root_clip_coloured.xml", output)
+    }
+
     // ------------------------------------------------------------------- text
 
     @Test

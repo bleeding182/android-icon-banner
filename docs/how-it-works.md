@@ -126,14 +126,13 @@ Alpha being all that survives, it is also all a banner gets to choose here: `mon
 the band's, and the tint then comes out lighter or heavier at the same hue. `color` and `textColor`
 never reach this layer.
 
-With several banners the clips **nest**. `VectorDrawable` unions two `<clip-path>` elements in one
-`<group>` rather than intersecting them, and each of these clips is *everything outside* one band —
-so a single group carrying both would keep the artwork everywhere except where the two bands cross,
-which is the opposite of what either clip asked for. Each banner therefore wraps whatever is at the
-root in a group of its own: N nested groups, one clip each, which does intersect. Only once all of
-them are in place are the even-odd ribbon paths appended at the root, in paint order. A ribbon
-appended earlier would be swallowed by the next banner's group and cut out by the very clip meant to
-protect the artwork from it.
+With several banners the clips **nest**. Each of these clips is *everything outside* one band, and
+the artwork has to stay out of all of them. Rather than depend on how `VectorDrawable` combines
+several `<clip-path>` elements in one `<group>`, each banner wraps whatever is at the root in a group
+of its own: N nested groups, one clip each, and an enclosing group's clip applies to everything
+inside it. Only once all of them are in place are the even-odd ribbon paths appended at the root, in
+paint order. A ribbon appended earlier would be swallowed by the next banner's group and cut out by
+the very clip meant to protect the artwork from it.
 
 All of that is the vector rewrite. A themed *bitmap* reaches the same cutout in pixels instead — see
 [Raster icons](#raster-icons).

@@ -186,7 +186,11 @@ modified, only a generated copy.
 
 **Colored foreground.** Two `<path>` elements are appended to the existing vector's root: the ribbon
 quad, then the pre-transformed text outline. Appending at root level draws them above all existing
-content and works regardless of any groups, transforms or clip-paths the original already contains.
+content and works regardless of any groups or transforms the original already contains, and of any
+clip-paths inside its groups. A `<clip-path>` directly under the root is the exception: it clips
+every later sibling, the appended banner included. When the root has one, its children are first
+moved into a plain attribute-less `<group>`, which confines the clip to the artwork and draws the
+same; a root without one is left as it is.
 
 **Monochrome.** All existing root children are wrapped in a single `<group>` carrying an
 inverse-ribbon `<clip-path>`, so icon content cannot bleed into the ribbon area. The ribbon and text

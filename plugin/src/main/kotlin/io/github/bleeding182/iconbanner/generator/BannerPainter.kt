@@ -35,11 +35,24 @@ internal class BannerPainter(
     /**
      * The ribbon, then the text on top, appended at the root — above everything, and unaffected by
      * the original vector's groups and transforms. Painters stack in call order.
+     *
+     * A `<clip-path>` directly under the root is the one thing that would still reach them: it clips
+     * every sibling after it, and the banner is appended after it. So such a root's children move into a
+     * plain `<group>` first, which confines the clip to the artwork and draws exactly as before. A root
+     * without one is left as it is, which is also what makes this safe to repeat per banner.
      */
     fun paintColored(document: Document, describedAs: String) {
         val root = document.documentElement
         val ribbon = ribbonFor(root, describedAs)
         val prefix = AndroidXml.androidPrefix(root)
+
+        // Snapshot first: appendChild detaches, renumbering the live NodeList.
+        val original = (0 until root.childNodes.length).map { root.childNodes.item(it) }
+        if (original.any { it is Element && it.localNameOrTag() == "clip-path" }) {
+            val group = document.createVectorElement("group")
+            original.forEach(group::appendChild)
+            root.appendChild(group)
+        }
 
         root.appendChild(
             document.createVectorElement("path").apply {
@@ -61,9 +74,10 @@ internal class BannerPainter(
      * Clip-and-punch, first half: everything at the root moves into a `<group>` clipped to everything
      * *outside* this ribbon, so opaque artwork cannot bleed into the band of a themed icon.
      *
-     * It wraps whatever is at the root, which is what makes several banners work: `VectorDrawable`
-     * **unions** two `<clip-path>` elements in one `<group>` rather than intersecting them, so the
-     * groups have to nest.
+     * It wraps whatever is at the root, which is what makes several banners work: each banner's group
+     * nests inside the next, one clip each, and an enclosing group's clip applies to everything inside
+     * it, so the artwork is kept out of every band at once. Nesting is what makes that hold, whatever
+     * `VectorDrawable` does with several `<clip-path>` elements in one group.
      */
     fun clipMonochrome(document: Document, describedAs: String) {
         val root = document.documentElement
