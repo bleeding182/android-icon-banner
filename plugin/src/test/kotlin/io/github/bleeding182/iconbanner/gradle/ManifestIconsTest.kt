@@ -103,6 +103,17 @@ class ManifestIconsTest {
         assertEquals(true, failure.message!!.contains("framework resource"), failure.message)
     }
 
+    /** Placeholders are substituted by the merger, which the plugin does not run. */
+    @Test
+    fun `a manifest placeholder fails and says where to declare the icon instead`() {
+        val main = manifest("main.xml", """android:icon="${'$'}{appIcon}"""")
+
+        val failure = assertThrows(GradleException::class.java) { read(main) }
+
+        assertEquals(true, failure.message!!.contains("manifest placeholder \${appIcon}"), failure.message)
+        assertEquals(true, failure.message!!.contains("src/<flavor>/AndroidManifest.xml"), failure.message)
+    }
+
     @Test
     fun `a padded declaration is trimmed as aapt2 does`() {
         val main = manifest("main.xml", """android:icon=" @mipmap/ic_launcher """")

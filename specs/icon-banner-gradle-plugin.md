@@ -525,6 +525,12 @@ parsing `tools:` attributes — a partial reimplementation of the merger, since 
 and `tools:node` all interact — or consuming the merged manifest and accepting the task dependency.
 Neither is worth it for an attribute a project rarely removes.
 
+Manifest placeholders are the same limitation by another route: `android:icon="${appIcon}"` is
+substituted by the merger from `manifestPlaceholders`, so the source manifest holds no resource
+reference. Resolving it would mean reading the variant's placeholders and reimplementing their
+substitution; instead it fails, naming the placeholder and pointing at the arrangement that works — an
+`android:icon` declared in the flavor's own `src/<flavor>/AndroidManifest.xml`.
+
 ### AGP integration
 
 Built against the AGP 9 variant API only, with no compatibility shims for AGP 8 — determined by

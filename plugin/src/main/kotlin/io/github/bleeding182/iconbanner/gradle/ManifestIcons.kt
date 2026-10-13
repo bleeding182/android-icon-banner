@@ -25,6 +25,8 @@ internal object ManifestIcons {
 
     private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
+    private val PLACEHOLDER = Regex("""\$\{[^}]*}""")
+
     /** [manifests] ordered highest priority first, as AGP's `sources.manifests.all` provides them. */
     fun read(manifests: List<File>, variantName: String): DeclaredIcons {
         var icon: String? = null
@@ -44,6 +46,15 @@ internal object ManifestIcons {
 
     /** A declaration that cannot be parsed is the user's own, so it fails rather than being ignored. */
     private fun reference(raw: String, attribute: String, variantName: String): ResourceRef {
+        // The merger substitutes placeholders, and the plugin reads the manifests before it runs.
+        PLACEHOLDER.find(raw)?.let { placeholder ->
+            throw GradleException(
+                "icon banner ($variantName): <application android:$attribute=\"$raw\"> uses manifest " +
+                    "placeholder ${placeholder.value}. The plugin reads the source manifests and does not " +
+                    "substitute placeholders, so declare android:$attribute in " +
+                    "src/<flavor>/AndroidManifest.xml instead."
+            )
+        }
         if (ResourceRef.isFramework(raw)) {
             throw GradleException(
                 "icon banner ($variantName): <application android:$attribute=\"$raw\"> is a framework " +

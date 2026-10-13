@@ -227,6 +227,10 @@ where the generate task enters the task graph it resolves during configuration.
   `ic_launcher_round` no manifest points at is left alone — Android never loads that one either. No
   density or configuration variant is ever invented: `anydpi` stays `anydpi`, and a missing `ldpi` stays
   missing.
+- **The icon is read from your source manifests, before the merger runs.** A manifest placeholder such
+  as `android:icon="${appIcon}"` is not substituted, and the build fails; declare `android:icon` in
+  `src/<flavor>/AndroidManifest.xml` instead. Likewise `tools:remove` on `android:roundIcon` is not
+  seen, so declare icons per flavor rather than removing them.
 - A nine-patch, or a bitmap no reader can decode, is skipped with a warning. If a variant asks for a
   banner and *nothing* in its icon could take one, the build fails rather than silently shipping an
   unmarked icon.
