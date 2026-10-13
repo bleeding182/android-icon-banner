@@ -48,9 +48,13 @@ internal class GoogleFontProvider(
             val cssUrl = cssUrl(spec)
             if (offline) throw offlineFailure(spec, cssUrl, knownUrl)
 
-            val fontUrl = knownUrl ?: GoogleFontsCss.selectTtfUrl(fetchCss(cssUrl, spec), spec, cssUrl)
+            // Even with a recorded URL, ask CSS again: Google retires font URLs, and a stale one would
+            // otherwise 404 on every build. A warm file is served above without this request.
+            val fontUrl = GoogleFontsCss.selectTtfUrl(fetchCss(cssUrl, spec), spec, cssUrl)
             checkOrigin(fontUrl)
-            val file = download(fontUrl)
+            // Several specs can name one file, and a spec key can change between versions, so the file
+            // may be warm while this spec has no URL recorded. Record it rather than download it again.
+            val file = cache.cachedFont(fontUrl) ?: download(fontUrl)
             cache.recordResolvedUrl(spec, fontUrl)
             return file.toFile()
         }

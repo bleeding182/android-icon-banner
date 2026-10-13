@@ -133,6 +133,36 @@ class GoogleFontProviderTest {
     }
 
     @Test
+    fun `a recorded url whose file is gone is resolved again rather than trusted`(@TempDir cacheDir: File) {
+        server().use { server ->
+            // A URL Google has since retired: the fake server answers it with 404.
+            FontCache(cacheDir.toPath()).recordResolvedUrl(robotoMonoBold, "${server.baseUrl}/s/robotomono/v30/gone.ttf")
+
+            val file = provider(cacheDir, server).resolve(robotoMonoBold)
+
+            assertContentEquals(fontFixture, file.readBytes())
+            assertEquals(1, server.cssRequests.size)
+            assertEquals(server.fontUrl, FontCache(cacheDir.toPath()).resolvedUrl(robotoMonoBold))
+        }
+    }
+
+    @Test
+    fun `a font file already cached under the url css names is not downloaded again`(@TempDir cacheDir: File) {
+        server().use { server ->
+            // The file is warm, but no URL is recorded for this spec: a cache written under an older
+            // spec key, or the same face reached through another spelling of the family.
+            FontCache(cacheDir.toPath()).store(server.fontUrl, fontFixture.inputStream())
+
+            val file = provider(cacheDir, server).resolve(robotoMonoBold)
+
+            assertContentEquals(fontFixture, file.readBytes())
+            assertEquals(1, server.cssRequests.size)
+            assertEquals(0, server.fontRequests.size, "the cached file was downloaded again")
+            assertEquals(server.fontUrl, FontCache(cacheDir.toPath()).resolvedUrl(robotoMonoBold))
+        }
+    }
+
+    @Test
     fun `offline with a warm cache succeeds`(@TempDir cacheDir: File) {
         server().use { server ->
             val warmed = provider(cacheDir, server).resolve(robotoMonoBold)
@@ -317,7 +347,7 @@ class GoogleFontProviderTest {
 
     @Test
     fun `a cached url outside gstatic is refused without a download`(@TempDir cacheDir: File) {
-        // resolvedUrl feeds the downloader directly on the fast path, so the cache is checked too.
+        // resolvedUrl is read off disk on the fast path, so the cache is checked too.
         FontCache(cacheDir.toPath()).recordResolvedUrl(robotoMonoBold, "https://fonts.gstatic.com.evil/x.ttf")
 
         val failure = assertFailsWith<FontResolutionException> {
