@@ -4,6 +4,7 @@ import io.github.bleeding182.iconbanner.api.BannerCorner
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Nested
+import org.gradle.api.tasks.Optional
 
 /**
  * One banner, as a task input. A managed type: Gradle implements it.
@@ -18,7 +19,12 @@ interface BannerInput {
     @get:Input
     val name: Property<String>
 
+    /**
+     * Optional only so that a provider with no value reaches the task, which fails naming the banner:
+     * Gradle's own validation names neither it nor the variant. Never a way to ask for no banner.
+     */
     @get:Input
+    @get:Optional
     val text: Property<String>
 
     @get:Input

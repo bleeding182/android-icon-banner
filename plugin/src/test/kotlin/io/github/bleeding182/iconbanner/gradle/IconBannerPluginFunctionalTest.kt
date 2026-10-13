@@ -213,6 +213,25 @@ class IconBannerPluginFunctionalTest {
         assertBannerText("SHA", fixture.generatedForeground("devDebug"))
     }
 
+    /** Assigning a provider asked for a banner; one with no value is a mistake, not an opt-out. */
+    @Test
+    fun `a provider valued text with no value fails naming the variant and banner`() {
+        fixture.buildScript(
+            """
+            |    iconBanner {
+            |        text = "EVERYWHERE"
+            |        banner("sha") { text = providers.gradleProperty("missingSha"); corner = bottomRight }
+            |    }
+            |$flavors
+            """.trimMargin()
+        )
+
+        val result = fixture.runner(":generateDevDebugIconBanner").buildAndFail()
+
+        assertTrue(result.output.contains("banner 'sha' in variant 'devDebug'"), result.output)
+        assertTrue(result.output.contains("no value"), result.output)
+    }
+
     @Test
     fun `a second build is up to date and reuses the configuration cache`() {
         fixture.buildScript(

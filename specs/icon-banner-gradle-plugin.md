@@ -598,7 +598,14 @@ providers. The flag gives the intended semantics precisely:
 | `"DEV"` | yes | configuration |
 | `""` | yes, empty ribbon | configuration |
 | a provider | yes | execution |
+| a provider with no value | yes — and the build fails | execution |
 | `null` | no — overrides inherited | never |
+
+A provider with no value — `providers.gradleProperty("sha")` on a build that does not pass it — is a
+mistake, not an opt-out: the assignment already asked for a banner, and quietly dropping it would ship
+an unmarked icon. The generate task fails naming the variant and the banner, and says to give it a
+value, `.orElse("")` for a plain ribbon, or `text = null` to drop the banner. `text` is an optional
+task input for that reason alone: Gradle's own validation would fail first, naming neither.
 
 Because assignment is observable at configuration time, enablement is decided there, and no
 `enabled` flag is needed: `text = null` is the opt-out. Every other property is an ordinary lazy

@@ -167,7 +167,12 @@ abstract class IconBannerGenerateTask : DefaultTask() {
         return BannerLayer(
             style = BannerStyle(
                 name = banner,
-                text = text.get(),
+                // Assigning a provider asked for a banner, so one with no value is a mistake, not an opt-out.
+                text = text.orNull ?: throw GradleException(
+                    "iconBanner.text for banner '$banner' in variant '$variant' is a provider with no " +
+                        "value. Give it a value, use .orElse(\"\") for a ribbon without text, or set " +
+                        "text = null to drop the banner."
+                ),
                 color = ColorFormat.check(color.get(), "color", variant, banner),
                 textColor = ColorFormat.check(textColor.get(), "textColor", variant, banner),
                 monochromeAlphaPercent = monochromeAlphaValue.toDouble(),

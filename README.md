@@ -200,9 +200,10 @@ android {
 }
 ```
 
-Assigning a provider enables the banner even before its value is known. Note the short SHA, and note
-that it is a banner of its own: one banner reading `"STAGING 1a2b3"` would be past what stays
-readable at icon size.
+Assigning a provider enables the banner even before its value is known, so a provider that turns out
+to have no value fails the build rather than dropping the banner; add `.orElse("")` if an empty ribbon
+is acceptable. Note the short SHA, and note that it is a banner of its own: one banner reading
+`"STAGING 1a2b3"` would be past what stays readable at icon size.
 
 The value is read when the icon is generated rather than when the build is configured, with one
 caveat: under the configuration cache a provider is finalized as the entry is stored, so on builds
