@@ -310,7 +310,7 @@ class RibbonTest {
     }
 
     @Test
-    fun `the axis intercept and the distance from the centre agree`() {
+    fun `the drawn band is centred at position's distance from the icon centre`() {
         // Measured off the drawn band rather than the intercept it was built from, so the √2 between
         // the two cannot cancel out of both sides.
         listOf(20.0, 65.0, 95.0).forEach { position ->

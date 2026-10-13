@@ -682,7 +682,7 @@ corners; the remaining extension is edge positions (top, bottom, left, right).
 
 That half is cheap now, and deliberately so: `position` is a distance from the icon's centre, which
 is the one measurement a corner and an edge share, so an edge banner is a new entry in the corner
-table and a rotation, not a second sizing model. `Ribbon.centreLineAxis` and the quad tables are the
+table and a rotation, not a second sizing model. `Ribbon.centreLineAxis`, `Ribbon.bandWidthAxis` and the quad tables are the
 only places that know a corner from an edge.
 
 One thing to decide when it happens, and it is less obvious than the four sides sound. At the default
