@@ -106,15 +106,10 @@ private class Session(private val request: BannerRequest) {
         eachSource(ref, subject = "Launcher icon $ref") { source ->
             when (val content = source.content) {
                 is SourceContent.Xml -> bannerIconXml(ref, source, content.text)
-                // A bitmap backing the icon itself is a legacy launcher icon: the whole 48dp icon, drawn
-                // with no mask, so the band is clipped to the icon's own alpha rather than running out
-                // to the canvas corner. No monochrome pass — such an icon has no monochrome layer.
-                is SourceContent.Raster -> bannerRaster(
-                    source,
-                    describedAs = source.relativePath,
-                    mode = Mode.COLORED,
-                    clipToSilhouette = true,
-                )
+                // A bitmap backing the icon itself is a legacy launcher icon. No monochrome pass — such
+                // an icon has no monochrome layer.
+                is SourceContent.Raster ->
+                    bannerRaster(source, describedAs = source.relativePath, mode = Mode.STANDALONE_ICON)
             }
         }
     }
@@ -125,9 +120,7 @@ private class Session(private val request: BannerRequest) {
         when (val root = document.documentElement.localNameOrTag()) {
             "adaptive-icon" -> processAdaptiveIcon(source, document)
             // No adaptive icon: banner the vector directly. Nowhere to declare a monochrome layer.
-            "vector" -> if (emitXml(source.relativePath, paint(document, source.relativePath, Mode.COLORED))) {
-                info += "${source.relativePath} replaced by a bannered copy"
-            }
+            "vector" -> bannerVector(document, source, describedAs = source.relativePath, Mode.STANDALONE_ICON)
             else -> fail(
                 "Launcher icon $ref (${source.relativePath}) has a <$root> root. The banner " +
                     "generator can only handle <adaptive-icon> and <vector>."
@@ -148,7 +141,7 @@ private class Session(private val request: BannerRequest) {
                 "$path: <foreground> has no android:drawable. A foreground defined inline is not " +
                     "supported; point it at a vector or bitmap drawable instead."
             )
-        bannerAdaptiveLayer(foregroundRef, Mode.COLORED, referencedBy = path)
+        bannerAdaptiveLayer(foregroundRef, Mode.ADAPTIVE_FOREGROUND, referencedBy = path)
 
         // No monochrome layer is a normal, supported shape of icon. Skip it without a word.
         val monochrome = root.firstChild("monochrome") ?: return
@@ -179,7 +172,13 @@ private class Session(private val request: BannerRequest) {
         }
     }
 
-    private enum class Mode { COLORED, MONOCHROME }
+    /**
+     * What a drawable is painted as. The two coloured modes differ only on a bitmap, and only in the
+     * silhouette clip — see BannerPainter.paintColored: a standalone icon is drawn unmasked, so its
+     * band is clipped to the icon's own alpha rather than running out to the canvas corner, while an
+     * adaptive foreground is masked by the system, as the monochrome layer is.
+     */
+    private enum class Mode { STANDALONE_ICON, ADAPTIVE_FOREGROUND, MONOCHROME }
 
     /**
      * Every banner onto one document, serialised once.
@@ -189,7 +188,8 @@ private class Session(private val request: BannerRequest) {
      */
     private fun paint(document: Document, describedAs: String, mode: Mode): String {
         when (mode) {
-            Mode.COLORED -> painters.forEach { it.paintColored(document, describedAs) }
+            Mode.STANDALONE_ICON, Mode.ADAPTIVE_FOREGROUND ->
+                painters.forEach { it.paintColored(document, describedAs) }
             Mode.MONOCHROME -> {
                 painters.forEach { it.clipMonochrome(document, describedAs) }
                 painters.forEach { it.punchMonochrome(document, describedAs) }
@@ -203,13 +203,12 @@ private class Session(private val request: BannerRequest) {
      *
      * The monochrome phases stay separate here for a different reason than the vector's: with two
      * banners, the second clear would eat the first fill wherever the bands overlap.
-     *
-     * @param clipToSilhouette bears on [Mode.COLORED] only — the monochrome layer is masked by the
-     * system, exactly as the vector's is.
      */
-    private fun paint(image: BufferedImage, describedAs: String, mode: Mode, clipToSilhouette: Boolean) {
+    private fun paint(image: BufferedImage, describedAs: String, mode: Mode) {
         when (mode) {
-            Mode.COLORED -> painters.forEach { it.paintColored(image, describedAs, clipToSilhouette) }
+            Mode.STANDALONE_ICON, Mode.ADAPTIVE_FOREGROUND -> painters.forEach {
+                it.paintColored(image, describedAs, clipToSilhouette = mode == Mode.STANDALONE_ICON)
+            }
             Mode.MONOCHROME -> {
                 painters.forEach { it.clipMonochrome(image, describedAs) }
                 painters.forEach { it.punchMonochrome(image, describedAs) }
@@ -241,22 +240,34 @@ private class Session(private val request: BannerRequest) {
                                 "root. A banner can only be added to a <vector> or a bitmap."
                         )
                     }
-                    val painted = paint(document, describedAs, mode)
-                    if (renameTo == null) {
-                        if (emitXml(source.relativePath, painted)) {
-                            info += "${source.relativePath} replaced by a bannered copy"
-                        }
-                    } else {
-                        val path = "${source.qualifiers}/$renameTo.xml"
-                        if (emitXml(path, painted)) info += "$path generated for the monochrome banner"
-                    }
-                    null
+                    bannerVector(document, source, describedAs, mode, renameTo)
                 }
-                // No silhouette clip, unlike a standalone icon — see BannerPainter.paintColored.
-                is SourceContent.Raster ->
-                    bannerRaster(source, describedAs, mode, clipToSilhouette = false, renameTo)
+                is SourceContent.Raster -> bannerRaster(source, describedAs, mode, renameTo)
             }
         }
+    }
+
+    /**
+     * The bannered vector, at its own path or — for a monochrome copy that cannot reuse the name — at
+     * [renameTo] in the same folder. The caller has already checked the root is a `<vector>`.
+     *
+     * Always null, in [eachSource]'s terms: a vector is either bannered or a failure.
+     */
+    private fun bannerVector(
+        document: Document,
+        source: SourceResource,
+        describedAs: String,
+        mode: Mode,
+        renameTo: String? = null,
+    ): String? {
+        val painted = paint(document, describedAs, mode)
+        if (renameTo == null) {
+            if (emitXml(source.relativePath, painted)) info += "${source.relativePath} replaced by a bannered copy"
+        } else {
+            val path = "${source.qualifiers}/$renameTo.xml"
+            if (emitXml(path, painted)) info += "$path generated for the monochrome banner"
+        }
+        return null
     }
 
     /**
@@ -273,7 +284,6 @@ private class Session(private val request: BannerRequest) {
         source: SourceResource,
         describedAs: String,
         mode: Mode,
-        clipToSilhouette: Boolean,
         renameTo: String? = null,
     ): String? {
         // A guard rather than a feature: the marker border is part of the file, so compositing over it
@@ -282,7 +292,7 @@ private class Session(private val request: BannerRequest) {
         val image = decode(source)
             ?: return skip(source, "no image reader could decode it")
 
-        paint(image, describedAs, mode, clipToSilhouette)
+        paint(image, describedAs, mode)
         val name = renameTo ?: source.fileName.substringBefore('.')
         val path = "${source.qualifiers}/$name.png"
         if (emit(path, GeneratedFile.Binary(RasterIcon.encode(image)))) {
