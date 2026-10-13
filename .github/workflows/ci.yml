@@ -40,20 +40,6 @@ jobs:
       - name: Build and test the plugin
         run: ./gradlew -p plugin build
 
-      # The JDK floor, asserted rather than assumed: AGP 9 supports JDK 17, so a class file above
-      # major 61 is an UnsupportedClassVersionError (or a variant-resolution failure) for a consumer
-      # on a supported daemon. Without a toolchain the level silently follows whichever JVM built it.
-      - name: Assert the bytecode targets JDK 17
-        run: |
-          mapfile -t jars < <(find plugin/build/libs -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar')
-          test "${#jars[@]}" -eq 1 || { echo "Expected one plugin jar, found: ${jars[*]:-none}"; exit 1; }
-          jar="${jars[0]}"
-          mapfile -t classes < <(unzip -Z1 "$jar" '*.class' | sed 's/\.class$//; s|/|.|g')
-          test "${#classes[@]}" -gt 0 || { echo "No classes in $jar."; exit 1; }
-          majors="$(javap -verbose -cp "$jar" "${classes[@]}" | awk '/major version/ { print $3 }' | sort -u | tr '\n' ' ')"
-          echo "$jar: class-file major version(s): $majors"
-          test "$majors" = "61 " || { echo "Expected class-file major 61 (JDK 17) only."; exit 1; }
-
       # The real integration check: apply the plugin to an actual Android app. assembleDebug covers
       # every flavor, which is one per kind of launcher icon — adaptive with a vector foreground,
       # adaptive with a raster one, legacy bitmaps alone, a plain vector — plus the unbannered prod.
@@ -77,8 +63,9 @@ jobs:
   # What a user gets: the plugin as published, resolved by id and version from a project shaped like
   # a fresh Android Studio template, on the JDK 17 floor. The TestKit suite puts the plugin on its
   # fixtures' buildscript classpath, so the marker POM, the module metadata and its
-  # org.gradle.jvm.version are never exercised there. .github/consumer/check.sh is the whole check,
-  # and the same one the Publish workflow runs before it uploads anything.
+  # org.gradle.jvm.version are never exercised there. .github/consumer/check.sh is the whole check —
+  # including the JDK floor, class-file major 61 on the published jar — and the same one the Publish
+  # workflow runs before it uploads anything.
   consumer:
     runs-on: ubuntu-latest
     env:

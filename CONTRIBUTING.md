@@ -73,6 +73,12 @@ rejects `-SNAPSHOT` versions and a published version can never be replaced.
 A `workflow_dispatch` run publishes a snapshot to GitHub Packages only, for shaking things out
 without a tag.
 
+Nothing is uploaded that no test ran against. A `build` job runs the tests and the consumer check on
+one set of artifacts and hands them on; Gradle's publish tasks build what they upload, so each
+publishing job rebuilds first and [`.github/same-artifacts.sh`](.github/same-artifacts.sh) fails it
+unless the bytes match the tested ones. That relies on the plugin build being reproducible — keep the
+`Jar` settings in `plugin/build.gradle.kts` that make it so.
+
 Portal credentials live in two places, and never in the repository:
 
 - CI: the `GRADLE_PUBLISH_KEY` and `GRADLE_PUBLISH_SECRET` Actions secrets.
@@ -91,7 +97,8 @@ appears, so expect the initial release to lag.
 ### When a release half-fails
 
 The Portal job runs after the GitHub Packages job, so the reachable bad state is "on Packages, not on
-the Portal". Recover with **Re-run failed jobs**, which reruns only the Portal job. Do *not* use
+the Portal". Recover with **Re-run failed jobs**, which reruns only the Portal job — within seven days, while the
+tested artifacts it compares against are still kept. Do *not* use
 *Re-run all jobs* and do not delete and re-push the tag: GitHub Packages returns 409 for a version
 that already exists, so the rerun dies before it reaches the Portal. Delete the Packages version
 first if you must take that route.
