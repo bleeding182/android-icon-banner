@@ -46,8 +46,13 @@ private class Session(private val request: BannerRequest) {
     /** Overlapping corners and skipped files. Insertion-ordered, so the log reads in icon order. */
     private val warnings = linkedSetOf<String>()
 
-    /** One painter per banner, in paint order — the order [BannerRequest.layers] is already in. */
-    private val painters: List<BannerPainter> by lazy {
+    /**
+     * One painter per banner, in paint order — the order [BannerRequest.layers] is already in.
+     *
+     * Built on construction, so the fonts are checked before any icon: a text/font mismatch is the
+     * user's own configuration, and easier to act on.
+     */
+    private val painters: List<BannerPainter> = run {
         // Banners routinely share a face, and parsing a TrueType file is not free.
         val faces = mutableMapOf<java.io.File, BannerText>()
         request.layers.map { layer ->
@@ -69,8 +74,6 @@ private class Session(private val request: BannerRequest) {
     }
 
     fun run(): GenerationResult {
-        // Fonts first: a text/font mismatch is the user's own configuration, and easier to act on.
-        painters
         warnAboutSharedCorners()
         val icons = listOfNotNull(request.icon, request.roundIcon).distinct()
         icons.forEach(::processIcon)
