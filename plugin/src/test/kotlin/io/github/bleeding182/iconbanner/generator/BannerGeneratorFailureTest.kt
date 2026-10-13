@@ -3,6 +3,7 @@ package io.github.bleeding182.iconbanner.generator
 import io.github.bleeding182.iconbanner.api.ResourceRef
 import org.junit.jupiter.api.Test
 import java.io.File
+import kotlin.test.assertFalse
 
 /**
  * The failure side of the policy: a variant that asked for a marking and would get none must fail
@@ -139,6 +140,63 @@ class BannerGeneratorFailureTest {
             "already exists",
         )
     }
+
+    /**
+     * One file, two different banners: a monochrome one for the icon, a coloured one for the round
+     * icon. Same-name override gives a resource exactly one version, so this cannot be generated — and
+     * it is the user's layout, not a bug, so the message has to say which two roles collided.
+     */
+    @Test
+    fun `a drawable that is one icon's monochrome and another's foreground fails and names both roles`() {
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", adaptive(foreground = "fg", monochrome = "shared"))
+            .xml("mipmap-anydpi-v26/ic_launcher_round.xml", adaptive(foreground = "shared", monochrome = "shared"))
+            .xml("drawable/fg.xml", input("foreground.xml"))
+            .xml("drawable/shared.xml", input("foreground.xml"))
+        val message = generate(
+            request(resources, style(), roundIcon = ResourceRef("mipmap", "ic_launcher_round")),
+        ).failureMessage()
+        assertMessageContains(
+            message,
+            "drawable/shared.xml is needed as two different banners",
+            "the <monochrome> of mipmap-anydpi-v26/ic_launcher.xml",
+            "the <foreground> of mipmap-anydpi-v26/ic_launcher_round.xml",
+            "give each role its own drawable",
+        )
+        assertFalse("Internal error" in message, message)
+    }
+
+    /**
+     * A bitmap as an adaptive foreground is masked by the system, and as a standalone icon is clipped
+     * to its own silhouette — so where it has any transparency, the two banners differ.
+     */
+    @Test
+    fun `a bitmap that is both an adaptive foreground and the round icon fails and names both roles`() {
+        val resources = FakeResources()
+            .xml(
+                "mipmap-anydpi-v26/ic_launcher.xml",
+                adaptive(foreground = "ic_fg", monochrome = null, type = "mipmap"),
+            )
+            .raster("mipmap-hdpi/ic_fg.png", solidPng(48, argb = 0x803DDC84.toInt()))
+        val message = generate(
+            request(resources, style(), roundIcon = ResourceRef("mipmap", "ic_fg")),
+        ).failureMessage()
+        assertMessageContains(
+            message,
+            "mipmap-hdpi/ic_fg.png is needed as two different banners",
+            "the <foreground> of mipmap-anydpi-v26/ic_launcher.xml",
+            "the launcher icon itself",
+        )
+        assertFalse("Internal error" in message, message)
+    }
+
+    private fun adaptive(foreground: String, monochrome: String?, type: String = "drawable"): String =
+        """
+        <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <foreground android:drawable="@$type/$foreground" />
+            ${monochrome?.let { "<monochrome android:drawable=\"@$type/$it\" />" }.orEmpty()}
+        </adaptive-icon>
+        """.trimIndent()
 
     @Test
     fun `an unreadable font file fails and names it`() {

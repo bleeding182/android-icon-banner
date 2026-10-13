@@ -1089,6 +1089,12 @@ One accepted behavioral consequence: same-name override changes every use of tha
 the launcher icon — a splash screen icon pointing at the same foreground would also gain the banner.
 For a debug marker this is arguably desirable.
 
+The same rule has a hard edge: one resource holds one version. A drawable needed as two *different*
+banners — one icon's `<monochrome>` and another's `<foreground>`, or a bitmap that is both an adaptive
+foreground and a standalone `roundIcon` — fails the build naming both roles, and the fix is a drawable
+per role. Identical output from two roles is fine, and the template's foreground-is-monochrome case
+never gets here: the reserved-name redirect gives the monochrome copy a name of its own.
+
 Minor API note from the spike: the variant's resource sources are nullable, absent when the
 `android.buildFeatures.androidResources` feature is off. The plugin must handle that rather than
 assume.

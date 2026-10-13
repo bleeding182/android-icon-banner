@@ -34,6 +34,9 @@ internal class DefaultBannerGenerator : BannerGenerator {
     }
 }
 
+/** The role, in a collision message, of a file that backs `icon` or `roundIcon` directly. */
+private const val ICON_ROLE = "the launcher icon itself"
+
 private class Session(private val request: BannerRequest) {
 
     /** Sorted, so output order does not depend on [io.github.bleeding182.iconbanner.api.ResourceLookup] iteration order. */
@@ -108,8 +111,9 @@ private class Session(private val request: BannerRequest) {
                 is SourceContent.Xml -> bannerIconXml(ref, source, content.text)
                 // A bitmap backing the icon itself is a legacy launcher icon. No monochrome pass — such
                 // an icon has no monochrome layer.
-                is SourceContent.Raster ->
-                    bannerRaster(content.bytes, source, describedAs = source.relativePath, Mode.STANDALONE_ICON)
+                is SourceContent.Raster -> bannerRaster(
+                    content.bytes, source, describedAs = source.relativePath, Mode.STANDALONE_ICON, ICON_ROLE,
+                )
             }
         }
     }
@@ -120,7 +124,7 @@ private class Session(private val request: BannerRequest) {
         when (val root = document.documentElement.localNameOrTag()) {
             "adaptive-icon" -> processAdaptiveIcon(source, document)
             // No adaptive icon: banner the vector directly. Nowhere to declare a monochrome layer.
-            "vector" -> bannerVector(document, source, describedAs = source.relativePath, Mode.STANDALONE_ICON)
+            "vector" -> bannerVector(document, source, describedAs = source.relativePath, Mode.STANDALONE_ICON, ICON_ROLE)
             else -> fail(
                 "Launcher icon $ref (${source.relativePath}) has a <$root> root. The banner " +
                     "generator can only handle <adaptive-icon> and <vector>."
@@ -167,7 +171,7 @@ private class Session(private val request: BannerRequest) {
         bannerAdaptiveLayer(monochromeRef, Mode.MONOCHROME, referencedBy = path, renameTo = reserved.name)
 
         monochrome.setAndroidAttribute(AndroidXml.androidPrefix(root), "drawable", reserved.toString())
-        if (emitXml(path, AndroidXml.serialize(document))) {
+        if (emitXml(path, AndroidXml.serialize(document), ICON_ROLE)) {
             info += "$path replaced: <monochrome> redirected to $reserved"
         }
     }
@@ -228,6 +232,8 @@ private class Session(private val request: BannerRequest) {
         // painted and re-encoded to prove it identical. Keyed on what decides the output rather than on
         // the paths it produces, so two *different* layers landing on one path are still [emit]'s catch.
         if (!bannered.add(Triple(ref, mode, renameTo))) return
+        val layer = if (mode == Mode.MONOCHROME) "monochrome" else "foreground"
+        val role = "the <$layer> of $referencedBy"
         eachSource(ref, subject = "$referencedBy references $ref, which") { source ->
             val describedAs = "$ref (${source.relativePath})"
             when (val content = source.content) {
@@ -240,9 +246,9 @@ private class Session(private val request: BannerRequest) {
                                 "root. A banner can only be added to a <vector> or a bitmap."
                         )
                     }
-                    bannerVector(document, source, describedAs, mode, renameTo)
+                    bannerVector(document, source, describedAs, mode, role, renameTo)
                 }
-                is SourceContent.Raster -> bannerRaster(content.bytes, source, describedAs, mode, renameTo)
+                is SourceContent.Raster -> bannerRaster(content.bytes, source, describedAs, mode, role, renameTo)
             }
         }
     }
@@ -258,14 +264,15 @@ private class Session(private val request: BannerRequest) {
         source: SourceResource,
         describedAs: String,
         mode: Mode,
+        role: String,
         renameTo: String? = null,
     ): String? {
         val painted = paint(document, describedAs, mode)
         if (renameTo == null) {
-            if (emitXml(source.relativePath, painted)) info += "${source.relativePath} replaced by a bannered copy"
+            if (emitXml(source.relativePath, painted, role)) info += "${source.relativePath} replaced by a bannered copy"
         } else {
             val path = "${source.qualifiers}/$renameTo.xml"
-            if (emitXml(path, painted)) info += "$path generated for the monochrome banner"
+            if (emitXml(path, painted, role)) info += "$path generated for the monochrome banner"
         }
         return null
     }
@@ -285,6 +292,7 @@ private class Session(private val request: BannerRequest) {
         source: SourceResource,
         describedAs: String,
         mode: Mode,
+        role: String,
         renameTo: String? = null,
     ): String? {
         // A guard rather than a feature: the marker border is part of the file, so compositing over it
@@ -296,7 +304,7 @@ private class Session(private val request: BannerRequest) {
         paint(image, describedAs, mode)
         val name = renameTo ?: source.fileName.substringBefore('.')
         val path = "${source.qualifiers}/$name.png"
-        if (emit(path, GeneratedFile.Binary(RasterIcon.encode(image)))) {
+        if (emit(path, GeneratedFile.Binary(RasterIcon.encode(image)), role)) {
             info += when {
                 renameTo != null -> "$path generated for the monochrome banner"
                 // Both paths: a webp source comes out as a png, and nothing else would say so.
@@ -372,19 +380,32 @@ private class Session(private val request: BannerRequest) {
 
     private var imageReadersReady = false
 
-    private fun emitXml(path: String, xml: String): Boolean = emit(path, GeneratedFile.Text(xml))
+    private fun emitXml(path: String, xml: String, role: String): Boolean = emit(path, GeneratedFile.Text(xml), role)
 
-    /** Records [file] at [path]. Returns false when this path was already produced. */
-    private fun emit(path: String, file: GeneratedFile): Boolean {
+    /** What each output path was produced as, so a collision can name both sides. Keyed like [outputs]. */
+    private val roles = mutableMapOf<String, String>()
+
+    /**
+     * Records [file] at [path], produced as [role]. Returns false when this path was already produced.
+     *
+     * The same output twice is routine — icon and roundIcon share a foreground — and dropped. Different
+     * output means one drawable is reached in two roles that banner it differently, say one icon's
+     * `<monochrome>` and another's `<foreground>`. Same-name override gives a resource one version, so
+     * that cannot be generated; the user's fix is a drawable per role.
+     */
+    private fun emit(path: String, file: GeneratedFile, role: String): Boolean {
         val existing = outputs[path]
         if (existing != null) {
-            // icon and roundIcon routinely share a foreground; differing content would be a bug.
             if (!existing.sameContentAs(file)) {
-                fail("Internal error: two different banner results were produced for $path.")
+                fail(
+                    "$path is needed as two different banners: ${roles.getValue(path)} and $role. One " +
+                        "resource cannot hold both — give each role its own drawable."
+                )
             }
             return false
         }
         outputs[path] = file
+        roles[path] = role
         return true
     }
 
