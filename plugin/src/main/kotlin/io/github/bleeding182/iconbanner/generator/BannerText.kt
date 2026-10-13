@@ -38,7 +38,7 @@ internal class BannerText(fontFile: File) {
      * the next build then cannot delete the font out of the font task's output directory, and the
      * build fails before it starts. The stream variant copies into the JDK's own temp file instead.
      */
-    val font: Font = fontFile.inputStream().buffered().use { Font.createFont(Font.TRUETYPE_FONT, it) }
+    private val font: Font = fontFile.inputStream().buffered().use { Font.createFont(Font.TRUETYPE_FONT, it) }
 
     /**
      * The first character [font] cannot draw. Missing-glyph boxes on a launcher icon are worse than
