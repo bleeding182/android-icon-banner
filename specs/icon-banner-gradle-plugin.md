@@ -988,6 +988,11 @@ Small decisions, recorded because each one is a plausible way to ship something 
   of missing-glyph boxes on the icon is worse than a build error, and it follows the rule already
   established: fail when the marking would be wrong rather than ship it wrong.
 - **Nested components are skipped.** The androidTest APK gets no banner.
+- **A coloured source vector with a root `android:tint` fails the build**, naming the file and the
+  attribute. The tint applies to the whole drawable, appended banner included, so ribbon and text
+  would come out one colour and the text would vanish. Material icon exports carry one. Moving the
+  colour into the paths' `fillColor` is the user's fix; the plugin does not try to undo the tint.
+  `android:alpha` and `android:autoMirrored` are left alone.
 - **Colour values must be hex literals.** The four accepted forms are `#RGB`, `#ARGB`, `#RRGGBB` and
   `#AARRGGBB`, expanded the way **aapt2** expands them — each nibble doubled, so `#ABC` is `#FFAABBCC`.
   That rule matters because for a vector the very same string is handed to the resource compiler, and the

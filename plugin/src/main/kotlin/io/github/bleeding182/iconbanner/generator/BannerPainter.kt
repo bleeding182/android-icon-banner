@@ -40,9 +40,19 @@ internal class BannerPainter(
      * every sibling after it, and the banner is appended after it. So such a root's children move into a
      * plain `<group>` first, which confines the clip to the artwork and draws exactly as before. A root
      * without one is left as it is, which is also what makes this safe to repeat per banner.
+     *
+     * A root `android:tint` reaches them too, and no wrapping helps: it tints the whole drawable, so
+     * ribbon and text come out one colour and the text is gone. Refused rather than worked around.
      */
     fun paintColored(document: Document, describedAs: String) {
         val root = document.documentElement
+        root.androidAttribute("tint")?.let { tint ->
+            fail(
+                "$describedAs: <vector> has android:tint=\"$tint\", which would tint the banner along " +
+                    "with the artwork and hide its text. Remove android:tint and put the colour in the " +
+                    "paths' fillColor instead."
+            )
+        }
         val ribbon = ribbonFor(root, describedAs)
         val prefix = AndroidXml.androidPrefix(root)
 

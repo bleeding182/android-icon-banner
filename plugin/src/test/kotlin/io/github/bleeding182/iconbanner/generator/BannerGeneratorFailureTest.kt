@@ -4,6 +4,7 @@ import io.github.bleeding182.iconbanner.api.ResourceRef
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * The failure side of the policy: a variant that asked for a marking and would get none must fail
@@ -139,6 +140,36 @@ class BannerGeneratorFailureTest {
             "@drawable/ic_launcher_foreground_iconbanner_mono",
             "already exists",
         )
+    }
+
+    /**
+     * `android:tint` on the root tints everything the vector draws, the appended banner included: the
+     * ribbon and its text come out one colour, and the text is gone. Material icon exports carry one.
+     */
+    @Test
+    fun `a vector with a root tint fails and names the file and attribute`() {
+        val resources = FakeResources().xml(
+            "drawable/ic_launcher.xml",
+            input("foreground.xml").replace("<vector ", "<vector android:tint=\"#FF000000\" "),
+        )
+        val message = generate(
+            request(resources, style(), icon = ResourceRef("drawable", "ic_launcher")),
+        ).failureMessage()
+        assertMessageContains(message, "drawable/ic_launcher.xml", "android:tint")
+    }
+
+    /** A themed icon is tinted by the launcher anyway, and its band is a cutout, not a second colour. */
+    @Test
+    fun `a monochrome vector with a root tint is still accepted`() {
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_separate_mono.xml"))
+            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
+            .xml(
+                "drawable/ic_launcher_monochrome.xml",
+                input("foreground_24.xml").replace("<vector ", "<vector android:tint=\"#FF000000\" "),
+            )
+        val result = generate(request(resources, style())).success()
+        assertTrue("android:tint" in result.xml("drawable/ic_launcher_monochrome.xml"))
     }
 
     /**
