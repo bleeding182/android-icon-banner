@@ -418,6 +418,25 @@ private class Session(private val request: BannerRequest) {
 
     private fun Element.drawableRef(path: String, layer: String): ResourceRef? {
         val raw = androidAttribute("drawable") ?: return null
+        if (ResourceRef.isFramework(raw)) {
+            fail(
+                "$path: <$layer android:drawable=\"$raw\"> is a framework resource; the plugin can only " +
+                    "banner the app's own resources. Point it at a drawable in this module instead."
+            )
+        }
+        ResourceRef.withoutPackage(raw)?.let { unqualified ->
+            fail(
+                "$path: <$layer android:drawable=\"$raw\"> names a package; package-qualified " +
+                    "references are not supported, so write it as $unqualified."
+            )
+        }
+        if (ResourceRef.isThemeAttribute(raw)) {
+            fail(
+                "$path: <$layer android:drawable=\"$raw\"> is a theme attribute, which the plugin " +
+                    "cannot resolve: it reads resources, not themes. Instead, point android:drawable at " +
+                    "the drawable or mipmap directly."
+            )
+        }
         return ResourceRef.parse(raw)
             ?: fail("$path: <$layer android:drawable=\"$raw\"> is not a resource reference.")
     }

@@ -487,6 +487,14 @@ would write output nothing displays. A declaration that *is* present must resolv
 resource reference fails rather than being quietly ignored. A variant with no `android:icon` at all has
 nothing to banner and the task does nothing.
 
+Only the `@type/name` form is a reference here, in the manifest and in an adaptive icon's layers alike,
+trimmed of surrounding whitespace as aapt2 trims it. A framework resource
+(`@android:mipmap/sym_def_app_icon`) or a theme attribute (`?attr/appIcon`) fails, because stripping
+the qualifier would resolve to a same-named resource of the app's and banner the wrong thing. Each
+failure says which it is: any other package-qualified reference (`@com.example.app:mipmap/ic_launcher`)
+is not supported and is to be written as `@mipmap/ic_launcher`, and a theme attribute is to be replaced
+by the drawable or mipmap it stands for.
+
 Every qualified copy of a resolved drawable is rewritten and re-emitted under its original
 qualifier, so an icon that varies by density or API level stays consistent — and no qualifier is ever
 added. `anydpi` stays `anydpi`, a density the project does not ship stays unshipped, and the only output

@@ -43,12 +43,33 @@ internal object ManifestIcons {
     }
 
     /** A declaration that cannot be parsed is the user's own, so it fails rather than being ignored. */
-    private fun reference(raw: String, attribute: String, variantName: String): ResourceRef =
-        ResourceRef.parse(raw)
+    private fun reference(raw: String, attribute: String, variantName: String): ResourceRef {
+        if (ResourceRef.isFramework(raw)) {
+            throw GradleException(
+                "icon banner ($variantName): <application android:$attribute=\"$raw\"> is a framework " +
+                    "resource; the plugin can only banner the app's own resources. Point it at an icon " +
+                    "in this module, or remove the banner for this variant."
+            )
+        }
+        ResourceRef.withoutPackage(raw)?.let { unqualified ->
+            throw GradleException(
+                "icon banner ($variantName): <application android:$attribute=\"$raw\"> names a package; " +
+                    "package-qualified references are not supported, so write it as $unqualified."
+            )
+        }
+        if (ResourceRef.isThemeAttribute(raw)) {
+            throw GradleException(
+                "icon banner ($variantName): <application android:$attribute=\"$raw\"> is a theme " +
+                    "attribute, which the plugin cannot resolve: it reads resources, not themes. " +
+                    "Instead, point android:$attribute at the drawable or mipmap directly."
+            )
+        }
+        return ResourceRef.parse(raw)
             ?: throw GradleException(
                 "icon banner ($variantName): <application android:$attribute=\"$raw\"> is not a " +
                     "resource reference, so the icon to banner cannot be resolved."
             )
+    }
 
     private fun applicationElement(manifest: File): Element? {
         val factory = DocumentBuilderFactory.newInstance().apply {

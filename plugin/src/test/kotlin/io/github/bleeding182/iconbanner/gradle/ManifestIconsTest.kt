@@ -94,6 +94,51 @@ class ManifestIconsTest {
     }
 
     @Test
+    fun `a framework icon fails rather than resolving to an app resource of the same name`() {
+        val main = manifest("main.xml", """android:icon="@android:mipmap/sym_def_app_icon"""")
+
+        val failure = assertThrows(GradleException::class.java) { read(main) }
+
+        assertEquals(true, failure.message!!.contains("@android:mipmap/sym_def_app_icon"), failure.message)
+        assertEquals(true, failure.message!!.contains("framework resource"), failure.message)
+    }
+
+    @Test
+    fun `a padded declaration is trimmed as aapt2 does`() {
+        val main = manifest("main.xml", """android:icon=" @mipmap/ic_launcher """")
+
+        assertEquals(ResourceRef("mipmap", "ic_launcher"), read(main).icon)
+    }
+
+    @Test
+    fun `a package-qualified icon fails with the unqualified form to write instead`() {
+        val main = manifest("main.xml", """android:icon="@com.example.app:mipmap/ic_launcher"""")
+
+        val failure = assertThrows(GradleException::class.java) { read(main) }
+
+        val message = failure.message!!
+        assertEquals(true, message.contains("@com.example.app:mipmap/ic_launcher"), message)
+        assertEquals(true, message.contains("package-qualified references are not supported"), message)
+        assertEquals(true, message.contains("write it as @mipmap/ic_launcher"), message)
+        assertEquals(false, message.contains("not a resource reference"), message)
+    }
+
+    @Test
+    fun `a theme attribute icon fails and says to point at the drawable directly`() {
+        for (attribute in listOf("?attr/appIcon", "?android:attr/appIcon")) {
+            val main = manifest("main.xml", """android:icon="$attribute"""")
+
+            val failure = assertThrows(GradleException::class.java) { read(main) }
+
+            val message = failure.message!!
+            assertEquals(true, message.contains(attribute), message)
+            assertEquals(true, message.contains("theme attribute"), message)
+            assertEquals(true, message.contains("point android:icon at the drawable or mipmap directly"), message)
+            assertEquals(false, message.contains("not a resource reference"), message)
+        }
+    }
+
+    @Test
     fun `a round icon declaration that is not a resource reference fails too`() {
         val main = manifest("main.xml", """android:icon="@mipmap/ic" android:roundIcon="nonsense"""")
 

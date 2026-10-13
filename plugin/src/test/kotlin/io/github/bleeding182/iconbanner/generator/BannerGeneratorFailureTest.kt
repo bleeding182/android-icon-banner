@@ -62,6 +62,65 @@ class BannerGeneratorFailureTest {
     }
 
     @Test
+    fun `a framework foreground fails rather than resolving to an app resource of the same name`() {
+        val resources = FakeResources()
+            .xml(
+                "mipmap-anydpi-v26/ic_launcher.xml",
+                """
+                <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+                    <foreground android:drawable="@android:drawable/sym_def_app_icon" />
+                </adaptive-icon>
+                """.trimIndent(),
+            )
+            .xml("drawable/sym_def_app_icon.xml", input("foreground.xml"))
+        val message = generate(request(resources, style())).failureMessage()
+        assertMessageContains(
+            message,
+            "mipmap-anydpi-v26/ic_launcher.xml",
+            "@android:drawable/sym_def_app_icon",
+            "framework resource",
+        )
+    }
+
+    @Test
+    fun `a package-qualified foreground fails with the unqualified form to write instead`() {
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", adaptiveIconWithForeground("@com.example.app:drawable/ic_launcher_foreground"))
+            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
+        val message = generate(request(resources, style())).failureMessage()
+        assertMessageContains(
+            message,
+            "mipmap-anydpi-v26/ic_launcher.xml",
+            "@com.example.app:drawable/ic_launcher_foreground",
+            "package-qualified references are not supported",
+            "write it as @drawable/ic_launcher_foreground",
+        )
+        assertFalse("not a resource reference" in message, message)
+    }
+
+    @Test
+    fun `a theme attribute foreground fails and says to point at the drawable directly`() {
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", adaptiveIconWithForeground("?attr/launcherForeground"))
+        val message = generate(request(resources, style())).failureMessage()
+        assertMessageContains(
+            message,
+            "?attr/launcherForeground",
+            "theme attribute",
+            "point android:drawable at the drawable or mipmap directly",
+        )
+        assertFalse("not a resource reference" in message, message)
+    }
+
+    @Test
+    fun `a padded foreground reference is trimmed as aapt2 does`() {
+        val resources = FakeResources()
+            .xml("mipmap-anydpi-v26/ic_launcher.xml", adaptiveIconWithForeground(" @drawable/ic_launcher_foreground "))
+            .xml("drawable/ic_launcher_foreground.xml", input("foreground.xml"))
+        generate(request(resources, style())).success()
+    }
+
+    @Test
     fun `a missing foreground drawable fails and names the reference`() {
         val resources = FakeResources()
             .xml("mipmap-anydpi-v26/ic_launcher.xml", input("adaptive_no_mono.xml"))
@@ -244,4 +303,11 @@ class BannerGeneratorFailureTest {
         )
         assertMessageContains(generate(request).failureMessage(), broken.name, "font")
     }
+
+    private fun adaptiveIconWithForeground(drawable: String): String =
+        """
+        <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <foreground android:drawable="$drawable" />
+        </adaptive-icon>
+        """.trimIndent()
 }

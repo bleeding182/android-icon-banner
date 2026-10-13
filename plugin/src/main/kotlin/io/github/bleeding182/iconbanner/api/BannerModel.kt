@@ -46,13 +46,41 @@ internal data class ResourceRef(val type: String, val name: String) {
     override fun toString(): String = "@$type/$name"
 
     companion object {
-        /** Parses `@mipmap/ic_launcher`, `@android:drawable/x` and bare `mipmap/ic_launcher`. */
+        /**
+         * Parses `@mipmap/ic_launcher`, and nothing else: a reference into another package, such as
+         * `@android:drawable/x`, or a theme attribute like `?attr/appIcon` is null. Only the app's own
+         * resources are looked up, so dropping the package would banner a same-named one of the app's.
+         * Surrounding whitespace is trimmed first, as aapt2 does.
+         */
         fun parse(reference: String): ResourceRef? {
-            val body = reference.removePrefix("@").substringAfter(':')
+            val trimmed = reference.trim()
+            if (!trimmed.startsWith("@") || ':' in trimmed) return null
+            val body = trimmed.removePrefix("@")
             val type = body.substringBefore('/', missingDelimiterValue = "")
             val name = body.substringAfter('/', missingDelimiterValue = "")
             return if (type.isEmpty() || name.isEmpty()) null else ResourceRef(type, name)
         }
+
+        /** `@android:…` and the private `@*android:…`: the platform's resources, never the app's. */
+        fun isFramework(reference: String): Boolean = reference.trim().let {
+            it.startsWith("@android:") || it.startsWith("@*android:")
+        }
+
+        /**
+         * What a package-qualified reference other than the framework's names, so a failure can say
+         * how to write it: `@com.example.app:mipmap/ic_launcher` gives `@mipmap/ic_launcher`. Null for
+         * anything else.
+         */
+        fun withoutPackage(reference: String): ResourceRef? {
+            val trimmed = reference.trim()
+            if (!trimmed.startsWith("@") || isFramework(trimmed)) return null
+            val body = trimmed.removePrefix("@").removePrefix("*")
+            if (':' !in body.substringBefore('/')) return null
+            return parse("@" + body.substringAfter(':'))
+        }
+
+        /** `?attr/x` or `?android:attr/x`: resolved against a theme at runtime, which a build has not got. */
+        fun isThemeAttribute(reference: String): Boolean = reference.trim().startsWith("?")
     }
 }
 
