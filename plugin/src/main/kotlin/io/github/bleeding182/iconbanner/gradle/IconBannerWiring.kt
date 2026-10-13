@@ -43,6 +43,39 @@ internal fun registerIconBanner(project: Project, components: ApplicationAndroid
 }
 
 /**
+ * Fails with the fix when `com.android.application` is applied to [project] but [pluginClassLoader]
+ * cannot load AGP's classes.
+ *
+ * That happens when the plugin is declared in a wider scope than AGP — `apply false` in the root
+ * build, AGP only in the module: Gradle loads the root's plugins in a parent class loader, which
+ * cannot see the module's. Probed by name, since naming the type in code is what fails.
+ */
+internal fun requireAgpVisible(project: Project, pluginClassLoader: ClassLoader?) {
+    val visible = try {
+        Class.forName(AGP_PROBE_CLASS, false, pluginClassLoader)
+        true
+    } catch (_: ClassNotFoundException) {
+        false
+    } catch (_: LinkageError) {
+        false
+    }
+    if (!visible) throw GradleException(agpOutOfScopeMessage(project.path))
+}
+
+/** Why the plugin cannot reach the AGP applied to [projectPath]. */
+private fun agpOutOfScopeMessage(projectPath: String): String =
+    "The icon banner plugin cannot see the Android Gradle Plugin applied to project '$projectPath'. " +
+        "The icon banner plugin is declared in a wider scope than com.android.application — usually " +
+        "with `apply false` in the root build script while AGP is declared only in the module — so " +
+        "Gradle loads them in separate class loaders and AGP's classes are out of the plugin's reach. " +
+        "Declare both with the same scope: add `id(\"com.android.application\") version \"<AGP version>\" apply false` " +
+        "to the root build script next to `id(\"io.github.bleeding182.iconbanner\")`, as the Android " +
+        "Studio template does, or declare both only in the module. If the plugin comes from buildSrc or " +
+        "an included build-logic build, AGP must be an `implementation` dependency there, not `compileOnly`."
+
+private const val AGP_PROBE_CLASS = "com.android.build.api.variant.ApplicationAndroidComponentsExtension"
+
+/**
  * Why this AGP is too old, or null when it will do.
  *
  * Takes the version apart rather than an [com.android.build.api.AndroidPluginVersion], so the rule is

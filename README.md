@@ -238,6 +238,24 @@ where the generate task enters the task graph it resolves during configuration.
 - The build fails if the chosen font has no glyph for a character in your text.
 - A variant with Android resources disabled gets no banner, with a warning.
 
+## Troubleshooting
+
+**"The icon banner plugin cannot see the Android Gradle Plugin"** means the two plugins are declared
+in different scopes — typically this plugin with `apply false` in the root `build.gradle.kts` and
+`com.android.application` only in the module. Gradle then loads them in separate class loaders and
+the plugin cannot reach AGP. Declare AGP next to it, as the Android Studio template does:
+
+```kotlin
+// root build.gradle.kts
+plugins {
+    id("com.android.application") version "9.3.1" apply false
+    id("io.github.bleeding182.iconbanner") version "0.0.3" apply false
+}
+```
+
+Declaring both only in the module works too. If the plugin is on the classpath of `buildSrc` or an
+included build-logic build, AGP has to be an `implementation` dependency there, not `compileOnly`.
+
 ## Fonts and licensing
 
 Faces come from Google Fonts at build time and are cached in `~/.gradle/caches/android-icon-banner`.

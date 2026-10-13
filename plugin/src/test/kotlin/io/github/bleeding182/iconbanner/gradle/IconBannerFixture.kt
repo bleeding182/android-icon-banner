@@ -116,6 +116,60 @@ internal class IconBannerFixture(val dir: File) {
         )
     }
 
+    /**
+     * Writes the layout that splits the plugin from AGP: the plugin on the root build's classpath,
+     * where `apply false` in the root `plugins { }` block puts it, and AGP requested only in the
+     * `app` module. Each lands in a different class loader scope, and the root's cannot see the
+     * module's. Fails during configuration, so the module needs no sources.
+     */
+    fun splitScopeBuildScript() = apply {
+        File(dir, "settings.gradle.kts").writeText(
+            """
+            pluginManagement {
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "fixture"
+            include(":app")
+            """.trimIndent()
+        )
+        File(dir, "local.properties").writeText("sdk.dir=${androidSdk().invariantPath()}\n")
+        File(dir, "build.gradle.kts").writeText(
+            """
+            buildscript {
+                dependencies {
+                    classpath(files(${pluginClasspath()}))
+                }
+            }
+            """.trimIndent()
+        )
+        File(dir, "app/build.gradle.kts")
+            .apply { parentFile.mkdirs() }
+            .writeText(
+                """
+                plugins {
+                    id("com.android.application") version "$AGP_VERSION"
+                    id("io.github.bleeding182.iconbanner")
+                }
+
+                android {
+                    namespace = "com.example.fixture"
+                    compileSdk {
+                        version = release($COMPILE_SDK)
+                    }
+                }
+                """.trimIndent()
+            )
+    }
+
     fun runner(vararg arguments: String): GradleRunner = GradleRunner.create()
         .withProjectDir(dir)
         .withTestKitDir(gradleUserHome())

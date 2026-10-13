@@ -531,6 +531,17 @@ includes generated directories — including the one the plugin itself registers
 
 Applied only to the application plugin. Library and dynamic-feature modules are a no-op.
 
+The plugin and AGP must be declared in the same scope. Declaring the plugin with `apply false` in the
+root build but AGP only in the module puts the plugin in the root's class loader and AGP in the
+module's child one, which the parent cannot see; the first AGP type the plugin names then dies with a
+bare `NoClassDefFoundError` carrying nothing but a class name. Bridging the loaders — reflection, or
+reaching into the module's class loader — was not considered worth it for a layout with a one-line fix,
+so the plugin instead probes for the AGP class by name through its own class loader, before naming any
+AGP type, and fails with a `GradleException` naming the cause and the fix: declare
+`com.android.application` with `apply false` next to it in the root build, as the Android Studio
+template does. The probe runs ahead of the AGP version check, which needs an AGP type to read the
+version from.
+
 ### DSL and merge semantics
 
 Shape agreed during design:

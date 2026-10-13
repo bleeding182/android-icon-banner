@@ -369,5 +369,17 @@ class IconBannerPluginFunctionalTest {
         assertFalse(fixture.generatedResources("devDebug").exists())
     }
 
+    @Test
+    fun `AGP declared in a narrower scope than the plugin fails naming the fix`() {
+        fixture.splitScopeBuildScript()
+
+        val result = fixture.runner("help").buildAndFail()
+
+        assertTrue(result.output.contains("cannot see the Android Gradle Plugin"), result.output)
+        assertTrue(result.output.contains("apply false"), result.output)
+        // The bare NoClassDefFoundError this replaces had nothing but the class name to say.
+        assertFalse(result.output.contains("com/android/build/api/variant/"), result.output)
+    }
+
     private fun String.occurrencesOf(fragment: String): Int = split(fragment).size - 1
 }
