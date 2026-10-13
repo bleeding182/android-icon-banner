@@ -2,7 +2,11 @@ package io.github.bleeding182.iconbanner.generator
 
 import org.junit.jupiter.api.Test
 import java.awt.Color
+import java.awt.Transparency
+import java.awt.color.ColorSpace
 import java.awt.image.BufferedImage
+import java.awt.image.ComponentColorModel
+import java.awt.image.DataBuffer
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -44,6 +48,43 @@ class RasterIconTest {
         assertEquals(BufferedImage.TYPE_INT_ARGB, decoded.type)
         assertTrue(decoded.colorModel.hasAlpha(), "Decoded bitmap must carry an alpha channel")
         assertEquals(255, Color(decoded.getRGB(0, 0), true).alpha)
+    }
+
+    /**
+     * A grey+alpha PNG (IHDR colour type 4) decodes through ImageIO as a linear `CS_GRAY` image, and
+     * `drawImage` would convert that to sRGB on the way to ARGB: 128 came out as 0xBC, every grey
+     * pixel visibly lighter than the file says. Grey *without* alpha decodes as a plain
+     * `TYPE_BYTE_GRAY` and never had the problem.
+     */
+    @Test
+    fun `a grey and alpha bitmap keeps its grey values`() {
+        // 257 turns 0x80 into 0x8080: the same value at 16 bits.
+        listOf(Triple(DataBuffer.TYPE_BYTE, 8, 1), Triple(DataBuffer.TYPE_USHORT, 16, 257)).forEach { (transferType, bits, scale) ->
+            val bytes = png(greyAlpha(transferType, listOf(0x80 * scale to 0xFF * scale, 0x80 * scale to 0x80 * scale)))
+
+            // Proves the fixture: colour type 4 at the bit depth asked for, not something ImageIO chose.
+            assertEquals(bits, bytes[24].toInt(), "IHDR bit depth")
+            assertEquals(4, bytes[25].toInt(), "IHDR colour type")
+
+            val decoded = assertNotNull(RasterIcon.decode(bytes))
+            assertEquals(BufferedImage.TYPE_INT_ARGB, decoded.type)
+            assertEquals(0xFF808080.toInt(), decoded.getRGB(0, 0), "$bits-bit opaque grey")
+            assertEquals(0x80808080.toInt(), decoded.getRGB(1, 0), "$bits-bit translucent grey")
+        }
+    }
+
+    /** One row of (grey, alpha) samples, in the colour model ImageIO writes as PNG colour type 4. */
+    private fun greyAlpha(transferType: Int, pixels: List<Pair<Int, Int>>): BufferedImage {
+        val model = ComponentColorModel(
+            ColorSpace.getInstance(ColorSpace.CS_GRAY),
+            true,
+            false,
+            Transparency.TRANSLUCENT,
+            transferType,
+        )
+        val raster = model.createCompatibleWritableRaster(pixels.size, 1)
+        pixels.forEachIndexed { x, (grey, alpha) -> raster.setPixel(x, 0, intArrayOf(grey, alpha)) }
+        return BufferedImage(model, raster, false, null)
     }
 
     @Test

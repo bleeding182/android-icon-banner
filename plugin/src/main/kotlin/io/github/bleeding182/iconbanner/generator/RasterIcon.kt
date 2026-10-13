@@ -1,6 +1,7 @@
 package io.github.bleeding182.iconbanner.generator
 
 import java.awt.Color
+import java.awt.color.ColorSpace
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -54,16 +55,55 @@ internal object RasterIcon {
         // decode that failed, not a build to kill with a stack trace.
         return try {
             val argb = BufferedImage(decoded.width, decoded.height, BufferedImage.TYPE_INT_ARGB)
-            val graphics = argb.createGraphics()
-            try {
-                graphics.drawImage(decoded, 0, 0, null)
-            } finally {
-                graphics.dispose()
+            if (decoded.isGreyWithAlpha()) {
+                copyGreyWithAlpha(decoded, argb)
+            } else {
+                val graphics = argb.createGraphics()
+                try {
+                    graphics.drawImage(decoded, 0, 0, null)
+                } finally {
+                    graphics.dispose()
+                }
             }
             argb
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * A grey+alpha PNG (colour type 4) comes back from ImageIO in the *linear* `CS_GRAY` space, and
+     * `drawImage` converts linear to sRGB on the way to ARGB: a stored 128 lands as 0xBC. The file's
+     * values are already what the user sees, so they are copied rather than converted. Grey without
+     * alpha decodes as `TYPE_BYTE_GRAY`, which `drawImage` gets right.
+     *
+     * Only that exact space qualifies: a grey ICC profile from an `iCCP` chunk is also `TYPE_GRAY`,
+     * but it says how to convert, so `drawImage` should. Premultiplied samples are not the file's
+     * values either, so those are converted too.
+     */
+    private fun BufferedImage.isGreyWithAlpha(): Boolean =
+        colorModel.colorSpace == ColorSpace.getInstance(ColorSpace.CS_GRAY) &&
+            colorModel.hasAlpha() &&
+            !colorModel.isAlphaPremultiplied
+
+    /** Both samples scaled to 8 bits by their own component size, so 8- and 16-bit files agree. */
+    private fun copyGreyWithAlpha(source: BufferedImage, target: BufferedImage) {
+        val greyBits = source.colorModel.getComponentSize(0)
+        val alphaBits = source.colorModel.getComponentSize(1)
+        val raster = source.raster
+        for (y in 0 until source.height) {
+            for (x in 0 until source.width) {
+                val grey = to8Bits(raster.getSample(x, y, 0), greyBits)
+                val alpha = to8Bits(raster.getSample(x, y, 1), alphaBits)
+                target.setRGB(x, y, (alpha shl 24) or (grey * 0x010101))
+            }
+        }
+    }
+
+    private fun to8Bits(sample: Int, bits: Int): Int = when {
+        bits == 8 -> sample
+        bits > 8 -> sample ushr (bits - 8)
+        else -> sample * 255 / ((1 shl bits) - 1)
     }
 
     /**
